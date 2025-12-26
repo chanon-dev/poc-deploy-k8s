@@ -24,9 +24,17 @@ Example application demonstrating full CI/CD pipeline with Jenkins, Harbor, and 
 - **Tech:** .NET 8, ASP.NET Core Web API
 - **Port:** 5000
 
-### 3. CI/CD Configuration
-- **Location:** `Jenkinsfile`
-- **Contains:** Multi-stage Jenkins pipeline for building and deploying both applications
+### 3. CI/CD Pipelines
+
+Available Jenkins pipelines:
+
+| File | Purpose | Environment | Secrets |
+|------|---------|-------------|---------|
+| `Jenkinsfile` | Basic pipeline | Any | Jenkins Credentials |
+| `Jenkinsfile.vault` | Vault integration | VM Jenkins | HashiCorp Vault |
+| `Jenkinsfile.vault.k8s` | K8s-native with DinD | Jenkins on K8s | HashiCorp Vault |
+
+**📚 Complete Documentation:** [Jenkinsfile.vault Explained](../docs/jenkinsfile-vault-explained.md)
 
 ## CI/CD Pipeline Flow
 

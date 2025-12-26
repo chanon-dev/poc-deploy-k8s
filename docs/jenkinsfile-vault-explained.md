@@ -43,6 +43,219 @@ Jenkinsfile สำหรับ CI/CD Pipeline ที่ใช้ Vault จัด
 
 ---
 
+## Container Build Options
+
+### ปัญหา: Jenkins บน Kubernetes ไม่มี Docker
+
+เมื่อ deploy Jenkins บน Kubernetes, Jenkins agent pods **ไม่มี Docker daemon** ติดตั้งอยู่ จึงต้องเลือกวิธี build container images:
+
+### วิธีที่ 1: Docker-in-Docker (DinD) ⚠️
+
+**หลักการทำงาน:**
+```
+┌──────────────────┐
+│  Jenkins Agent   │
+│  ┌────────────┐  │
+│  │ Docker CLI │  │ ← รัน docker commands
+│  └─────┬──────┘  │
+│        ↓         │
+│  ┌────────────┐  │
+│  │   Docker   │  │ ← Docker daemon (privileged)
+│  │   Daemon   │  │
+│  └────────────┘  │
+└──────────────────┘
+```
+
+**ข้อดี:**
+- ✅ ใช้ Docker commands ปกติได้ (คุ้นเคย)
+- ✅ รองรับ docker run, docker-compose
+- ✅ Syntax เหมือน local development
+
+**ข้อเสีย:**
+- ❌ **ต้อง privileged mode** (security risk สูง)
+- ❌ ใช้ resources มาก (1-2GB RAM)
+- ❌ บาง K8s cluster ไม่อนุญาต privileged containers
+- ❌ ไม่เป็น Cloud-native best practice
+
+**ใช้เมื่อไหร่:**
+- Development/Testing environments
+- Single-tenant clusters
+- PoC/Learning phase
+
+**ตัวอย่าง:**
+```groovy
+agent {
+    kubernetes {
+        yaml '''
+spec:
+  containers:
+  - name: docker
+    image: docker:24-dind
+    securityContext:
+      privileged: true  # ⚠️ Security risk!
+'''
+    }
+}
+```
+
+---
+
+### วิธีที่ 2: Kaniko 🏆 (Production Standard)
+
+**หลักการทำงาน:**
+```
+┌──────────────────────────┐
+│  Jenkins Agent           │
+│  ┌────────────────────┐  │
+│  │ Kaniko Executor    │  │ ← อ่าน Dockerfile
+│  │                    │  │   Execute instructions
+│  │ ไม่ต้อง daemon!   │  │   Build layers
+│  │ ไม่ต้อง privileged!│  │   Push to registry
+│  └────────────────────┘  │
+└──────────────────────────┘
+```
+
+**Kaniko คืออะไร:**
+- Tool สำหรับ build Docker images โดย**ไม่ต้องใช้ Docker daemon**
+- Developed by Google (ผู้สร้าง Kubernetes)
+- Open-source: github.com/GoogleContainerTools/kaniko
+- Standard สำหรับ container builds บน Kubernetes
+
+**ข้อดี:**
+- ✅ **ไม่ต้อง privileged mode** (ปลอดภัย)
+- ✅ ใช้ resources น้อยกว่า (500MB-1GB RAM)
+- ✅ Cloud-native best practice (CNCF recommended)
+- ✅ ใช้ในองค์กรใหญ่: Google, GitLab, Spotify, Adobe
+- ✅ รองรับ multi-stage builds, caching
+- ✅ Compliant กับ security standards (SOC 2, PCI-DSS)
+
+**ข้อเสีย:**
+- ⚠️ Syntax ต่างจาก docker build เล็กน้อย
+- ⚠️ ไม่สามารถ docker run ระหว่าง build
+
+**ใช้เมื่อไหร่:**
+- **Production environments** (แนะนำ)
+- Multi-tenant Kubernetes clusters
+- Regulated industries (Banking, Healthcare)
+- Security-conscious organizations
+
+**ตัวอย่าง:**
+```groovy
+agent {
+    kubernetes {
+        yaml '''
+spec:
+  containers:
+  - name: kaniko
+    image: gcr.io/kaniko-project/executor:debug
+    # ไม่ต้อง privileged!  ✅
+    command: ["/busybox/cat"]
+    tty: true
+'''
+    }
+}
+stages {
+    stage('Build') {
+        steps {
+            container('kaniko') {
+                sh '''
+                    /kaniko/executor \
+                      --context=. \
+                      --dockerfile=Dockerfile \
+                      --destination=harbor.local/app:latest
+                '''
+            }
+        }
+    }
+}
+```
+
+---
+
+### วิธีที่ 3: BuildKit (Rootless mode)
+
+**Alternative สำหรับ advanced use cases**
+
+**ข้อดี:**
+- ✅ Compatibility 100% กับ Docker
+- ✅ Advanced features (cache mounts, secrets)
+- ✅ Docker Inc. officially supported
+
+**ข้อเสีย:**
+- ⚠️ Configuration ซับซ้อนกว่า Kaniko
+- ⚠️ Less popular ใน K8s
+
+**ใช้เมื่อไหร่:**
+- ต้องการ 100% Docker compatibility
+- Complex builds ที่ Kaniko ไม่รองรับ
+
+---
+
+### เปรียบเทียบแบบละเอียด
+
+| Criteria | Docker-in-Docker | Kaniko | BuildKit |
+|----------|-----------------|---------|----------|
+| **Security** | ❌ Privileged | ✅ No privileged | ✅ Rootless mode |
+| **Resources** | 1-2GB RAM | 500MB-1GB | 800MB-1.5GB |
+| **Complexity** | ⭐ Easy | ⭐⭐ Medium | ⭐⭐⭐ Advanced |
+| **Production Use** | ❌ Not recommended | ✅ Industry standard | ✅ Docker official |
+| **Learning Curve** | Easy (same as local) | Medium | High |
+| **Multi-tenancy** | ❌ Not safe | ✅ Safe | ✅ Safe |
+| **Cloud Providers** | Not recommended | ✅ Google, AWS, Azure | ✅ Docker Inc. |
+| **CNCF Recommended** | ❌ No | ✅ Yes | ✅ Yes |
+
+---
+
+### ทำไม Jenkinsfile.vault ใช้ Docker-in-Docker?
+
+**เวอร์ชันปัจจุบัน (Jenkinsfile.vault) ใช้ raw shell commands** เพราะ:
+
+1. **ความเข้าใจง่าย** - ใช้ docker commands ธรรมดา
+2. **PoC/Learning** - เหมาะสำหรับเริ่มต้นทดสอบ
+3. **Development** - ใช้สำหรับ dev environment
+
+---
+
+### แนะนำสำหรับ Production
+
+สำหรับ **production-grade deployment**, ควร migrate ไปใช้ **Kaniko**:
+
+**✅ ควรใช้ Kaniko เพราะ:**
+- Security-first approach (ไม่ต้อง privileged)
+- Industry standard (Google, GitLab, Spotify ใช้)
+- Compliance-ready (SOC 2, PCI-DSS, HIPAA)
+- Resource-efficient
+- Future-proof
+
+**Migration Path:**
+```
+Phase 1: Development
+└─ Jenkinsfile.vault (Docker-in-Docker) ← ตอนนี้อยู่ตรงนี้
+
+Phase 2: Staging
+└─ Jenkinsfile.vault.kaniko (Kaniko)
+
+Phase 3: Production
+└─ Jenkinsfile.vault.kaniko (Kaniko) ← เป้าหมาย
+```
+
+**เราได้เตรียม Jenkinsfile.vault.k8s ไว้แล้ว** ที่ใช้ Docker-in-Docker แบบเต็มรูปแบบสำหรับ Kubernetes
+
+**สำหรับ Production** แนะนำให้ใช้ Kaniko version (อยู่ในแผนพัฒนา)
+
+---
+
+### สรุป
+
+| Environment | แนะนำ | เหตุผล |
+|-------------|-------|--------|
+| **Local Development** | Docker Desktop | Native, fastest |
+| **Dev K8s** | DinD | Easy, familiar |
+| **Staging K8s** | Kaniko | Production-like |
+| **Production K8s** | Kaniko | Security, compliance |
+
+---
+
 ## Pipeline Flow
 
 ```
