@@ -1,0 +1,59 @@
+# Allow Applications to Access Vault
+# Pods that need secrets from Vault must be able to reach it
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-vault-access
+  namespace: dev
+spec:
+  podSelector:
+    matchLabels:
+      vault-inject: "true"  # Only pods with this label can access Vault
+  policyTypes:
+  - Egress
+  egress:
+  - to:
+    - namespaceSelector:
+        matchLabels:
+          kubernetes.io/metadata.name: vault
+    ports:
+    - protocol: TCP
+      port: 8200  # Vault API port
+---
+# Allow Vault to be accessed by applications
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: vault-ingress-from-apps
+  namespace: vault
+spec:
+  podSelector:
+    matchLabels:
+      app: vault
+  policyTypes:
+  - Ingress
+  ingress:
+  - from:
+    - namespaceSelector:
+        matchLabels:
+          environment: dev
+    - namespaceSelector:
+        matchLabels:
+          environment: sit
+    - namespaceSelector:
+        matchLabels:
+          environment: uat
+    - namespaceSelector:
+        matchLabels:
+          environment: prod
+    ports:
+    - protocol: TCP
+      port: 8200
+  - from:
+    - namespaceSelector:
+        matchLabels:
+          kubernetes.io/metadata.name: jenkins
+    ports:
+    - protocol: TCP
+      port: 8200

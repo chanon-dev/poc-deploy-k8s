@@ -1,0 +1,59 @@
+# Argo CD RBAC Configuration
+# This configures RBAC policies for Argo CD users
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: argocd-rbac-cm
+  namespace: argocd
+  labels:
+    app.kubernetes.io/name: argocd-rbac-cm
+    app.kubernetes.io/part-of: argocd
+data:
+  # Default policy for all users
+  policy.default: role:readonly
+
+  # RBAC policies
+  policy.csv: |
+    # Platform Team - Full Admin Access
+    p, role:platform-admin, applications, *, */*, allow
+    p, role:platform-admin, clusters, *, *, allow
+    p, role:platform-admin, repositories, *, *, allow
+    p, role:platform-admin, accounts, *, *, allow
+    p, role:platform-admin, projects, *, *, allow
+    p, role:platform-admin, logs, get, *, allow
+    p, role:platform-admin, exec, create, */*, allow
+    g, platform-team, role:platform-admin
+
+    # Namespace Admin - Can manage apps in their project
+    p, role:namespace-admin, applications, get, */*, allow
+    p, role:namespace-admin, applications, create, */*, allow
+    p, role:namespace-admin, applications, update, */*, allow
+    p, role:namespace-admin, applications, delete, */*, allow
+    p, role:namespace-admin, applications, sync, */*, allow
+    p, role:namespace-admin, applications, override, */*, allow
+    p, role:namespace-admin, logs, get, *, allow
+    p, role:namespace-admin, exec, create, */*, deny
+    g, tech-leads, role:namespace-admin
+
+    # Developer - Read and Sync only
+    p, role:developer, applications, get, */*, allow
+    p, role:developer, applications, sync, */*, allow
+    p, role:developer, logs, get, */*, allow
+    p, role:developer, exec, create, */*, deny
+    g, developers, role:developer
+
+    # Project-specific policies
+    # Dev environment
+    p, role:dev-team, applications, *, dev/*, allow
+    p, role:dev-team, logs, get, dev/*, allow
+    g, dev-team, role:dev-team
+
+    # Prod environment - More restrictive
+    p, role:prod-deployer, applications, get, prod/*, allow
+    p, role:prod-deployer, applications, sync, prod/*, allow
+    p, role:prod-deployer, logs, get, prod/*, allow
+    g, prod-deployers, role:prod-deployer
+
+  # Scope for tokens (optional)
+  scopes: '[groups, email]'

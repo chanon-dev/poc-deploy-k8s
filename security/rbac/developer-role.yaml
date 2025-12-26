@@ -1,0 +1,67 @@
+# Developer Role - Limited Access
+# Read-only access + port-forward + logs + exec (if needed)
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: developer
+  namespace: dev
+  labels:
+    rbac-role: developer
+rules:
+# Read access to most resources
+- apiGroups: [""]
+  resources:
+    - pods
+    - pods/log
+    - services
+    - configmaps
+    - persistentvolumeclaims
+    - events
+  verbs: ["get", "list", "watch"]
+- apiGroups: ["apps"]
+  resources:
+    - deployments
+    - replicasets
+    - statefulsets
+    - daemonsets
+  verbs: ["get", "list", "watch"]
+- apiGroups: ["batch"]
+  resources:
+    - jobs
+    - cronjobs
+  verbs: ["get", "list", "watch"]
+- apiGroups: ["networking.k8s.io"]
+  resources:
+    - ingresses
+  verbs: ["get", "list", "watch"]
+# Port-forward capability
+- apiGroups: [""]
+  resources: ["pods/portforward"]
+  verbs: ["create", "get"]
+# Exec into pods (optional - can be removed for tighter security)
+- apiGroups: [""]
+  resources: ["pods/exec"]
+  verbs: ["create", "get"]
+# Secret read (limited - only if needed)
+# - apiGroups: [""]
+#   resources: ["secrets"]
+#   verbs: ["get", "list"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: developers-dev
+  namespace: dev
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: Role
+  name: developer
+subjects:
+- kind: Group
+  name: developers-dev
+  apiGroup: rbac.authorization.k8s.io
+# Example user binding:
+# - kind: User
+#   name: developer@company.com
+#   apiGroup: rbac.authorization.k8s.io

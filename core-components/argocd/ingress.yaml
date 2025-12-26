@@ -1,0 +1,116 @@
+# Argo CD Ingress Configuration
+# Multiple configurations for different SSL/TLS approaches
+#
+# RECOMMENDED: SSL Termination at Ingress (Method 2) - See below
+#
+# Prerequisites:
+# 1. Argo CD must run in INSECURE mode:
+#    kubectl apply -f core-components/argocd/argocd-cmd-params-cm.yaml
+#    kubectl rollout restart deployment argocd-server -n argocd
+#
+# 2. For SSL Termination, create TLS certificate:
+#    openssl req -x509 -nodes -days 365 -newkey rsa:2048 \
+#      -keyout argocd-tls.key -out argocd-tls.crt \
+#      -subj "/CN=argocd.local/O=argocd"
+#
+#    kubectl create secret tls argocd-tls-secret \
+#      --cert=argocd-tls.crt --key=argocd-tls.key -n argocd
+
+---
+# ============================================================================
+# METHOD 2: SSL Termination at Ingress (RECOMMENDED ⭐)
+# ============================================================================
+# - NGINX terminates SSL/TLS
+# - Backend uses HTTP (Argo CD in insecure mode)
+# - Browser sees HTTPS, no certificate warnings with valid cert
+# - Not redundant - only one layer of encryption
+#
+# Access: https://argocd.local
+
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: argocd-server-ingress
+  namespace: argocd
+  annotations:
+    # Backend uses HTTP (Argo CD in insecure mode)
+    nginx.ingress.kubernetes.io/backend-protocol: "HTTP"
+    # Force redirect HTTP to HTTPS
+    nginx.ingress.kubernetes.io/ssl-redirect: "true"
+    nginx.ingress.kubernetes.io/force-ssl-redirect: "true"
+spec:
+  ingressClassName: nginx
+  tls:
+  - hosts:
+    - argocd.local
+    secretName: argocd-tls-secret  # TLS certificate (self-signed or Let's Encrypt)
+  rules:
+  - host: argocd.local
+    http:
+      paths:
+      - path: /
+        pathType: Prefix
+        backend:
+          service:
+            name: argocd-server
+            port:
+              number: 80  # HTTP port (insecure mode)
+
+---
+# ============================================================================
+# ALTERNATIVE 1: HTTP Only (No SSL)
+# ============================================================================
+# - Simplest setup for local development
+# - No HTTPS, no certificate management
+# - NOT recommended for production
+#
+# Access: http://argocd-http.local
+#
+# To use this instead of SSL Termination:
+# 1. Delete the SSL Termination Ingress above
+# 2. Apply this configuration
+
+# apiVersion: networking.k8s.io/v1
+# kind: Ingress
+# metadata:
+#   name: argocd-server-http-ingress
+#   namespace: argocd
+#   annotations:
+#     nginx.ingress.kubernetes.io/ssl-redirect: "false"
+#     nginx.ingress.kubernetes.io/backend-protocol: "HTTP"
+#     # Required for Argo CD to work properly behind proxy
+#     nginx.ingress.kubernetes.io/configuration-snippet: |
+#       proxy_set_header X-Forwarded-Proto $scheme;
+#       proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+# spec:
+#   ingressClassName: nginx
+#   rules:
+#   - host: argocd-http.local
+#     http:
+#       paths:
+#       - path: /
+#         pathType: Prefix
+#         backend:
+#           service:
+#             name: argocd-server
+#             port:
+#               number: 80
+
+---
+# ============================================================================
+# ALTERNATIVE 2: SSL Passthrough
+# ============================================================================
+# - NGINX forwards encrypted traffic without decrypting
+# - Argo CD handles SSL with its own certificate (self-signed)
+# - Browser will show certificate warning
+# - Argo CD must run in SECURE mode (remove insecure ConfigMap)
+#
+# Access: https://argocd.local (with certificate warning)
+#
+# See: core-components/argocd/ingress-https.yaml for full configuration
+
+---
+# Documentation:
+# - docs/ssl-termination-explained.md - Detailed explanation of 3 methods
+# - docs/argocd-https-vs-http.md - HTTP vs HTTPS comparison
+# - docs/ingress-setup-guide.md - Complete setup guide

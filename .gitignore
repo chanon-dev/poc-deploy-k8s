@@ -1,0 +1,76 @@
+# Vault Keys and Secrets - NEVER COMMIT THESE!
+vault-keys.json
+*.key
+*.pem
+*.crt
+*.p12
+
+# Backup files
+*.backup
+*.bak
+*~
+
+# Temporary files
+*.tmp
+*.swp
+*.swo
+.DS_Store
+
+# IDE files
+.idea/
+.vscode/
+*.iml
+
+# Helm
+*.tgz
+charts/
+
+# Kubernetes
+kubeconfig
+*.kubeconfig
+
+# Logs
+*.log
+
+# Environment files
+.env
+.env.local
+.env.*.local
+
+# MacOS
+.DS_Store
+.AppleDouble
+.LSOverride
+
+# Thumbnails
+._*
+
+# Local testing
+test-data/
+local-storage/
+
+# Terraform (if used)
+.terraform/
+*.tfstate
+*.tfstate.backup
+.terraform.lock.hcl
+
+# Docker
+docker-compose.override.yml
+
+# Node modules (if any)
+node_modules/
+npm-debug.log*
+
+# Python (if any)
+__pycache__/
+*.py[cod]
+*$py.class
+.Python
+venv/
+ENV/
+
+# Output directories
+output/
+dist/
+build/

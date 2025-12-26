@@ -1,0 +1,68 @@
+# Kind Cluster Configuration for Local Development
+# ใช้สำหรับสร้าง Kubernetes cluster บน Docker (Kind)
+
+kind: Cluster
+apiVersion: kind.x-k8s.io/v1alpha4
+
+# Cluster name
+name: k8s-platform
+
+# Networking
+networking:
+  # Disable default CNI (we'll install our own if needed)
+  disableDefaultCNI: false
+
+  # Pod subnet
+  podSubnet: "10.244.0.0/16"
+
+  # Service subnet
+  serviceSubnet: "10.96.0.0/12"
+
+# Nodes configuration
+nodes:
+  # Control plane node
+  - role: control-plane
+    # Port mappings for accessing services
+    extraPortMappings:
+      # Jenkins
+      - containerPort: 30080
+        hostPort: 30080
+        protocol: TCP
+      # Argo CD
+      - containerPort: 30443
+        hostPort: 30443
+        protocol: TCP
+      # Vault
+      - containerPort: 30200
+        hostPort: 30200
+        protocol: TCP
+
+    # Mount docker socket for building images
+    extraMounts:
+      - hostPath: /var/run/docker.sock
+        containerPath: /var/run/docker.sock
+
+    # Kubelet configuration
+    kubeadmConfigPatches:
+      - |
+        kind: InitConfiguration
+        nodeRegistration:
+          kubeletExtraArgs:
+            node-labels: "ingress-ready=true"
+
+  # Worker nodes (optional - สำหรับ multi-node testing)
+  # - role: worker
+  #   extraMounts:
+  #     - hostPath: /var/run/docker.sock
+  #       containerPath: /var/run/docker.sock
+
+# Feature gates
+featureGates:
+  # Enable any required feature gates
+  # Example: "CSINodeInfo": true
+
+# Runtime configuration
+containerdConfigPatches:
+  - |-
+    [plugins."io.containerd.grpc.v1.cri".registry.mirrors."localhost:5001"]
+      endpoint = ["http://localhost:5001"]

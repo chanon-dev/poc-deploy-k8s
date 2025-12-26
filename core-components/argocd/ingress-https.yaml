@@ -1,0 +1,59 @@
+# Argo CD Ingress Configuration - HTTPS Mode (Secure)
+# For production or when you want proper SSL/TLS
+#
+# This configuration uses SSL Passthrough, allowing Argo CD to handle TLS itself
+# Argo CD will serve HTTPS directly, and NGINX just passes the encrypted traffic through
+
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: argocd-server-ingress-https
+  namespace: argocd
+  annotations:
+    # SSL Passthrough: Let Argo CD handle TLS, NGINX just forwards
+    nginx.ingress.kubernetes.io/ssl-passthrough: "true"
+    nginx.ingress.kubernetes.io/backend-protocol: "HTTPS"
+    # Force redirect HTTP to HTTPS
+    nginx.ingress.kubernetes.io/force-ssl-redirect: "true"
+spec:
+  ingressClassName: nginx
+  rules:
+  - host: argocd.local
+    http:
+      paths:
+      - path: /
+        pathType: Prefix
+        backend:
+          service:
+            name: argocd-server
+            port:
+              name: https  # ใช้ port HTTPS (443)
+---
+# Alternative: Terminate SSL at Ingress (if you have TLS certificate)
+# This requires you to provide TLS certificate in a Secret
+
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: argocd-server-ingress-tls
+  namespace: argocd
+  annotations:
+    nginx.ingress.kubernetes.io/backend-protocol: "HTTPS"
+    nginx.ingress.kubernetes.io/ssl-redirect: "true"
+spec:
+  ingressClassName: nginx
+  tls:
+  - hosts:
+    - argocd.local
+    secretName: argocd-tls-secret  # ต้องสร้าง secret นี้ก่อน
+  rules:
+  - host: argocd.local
+    http:
+      paths:
+      - path: /
+        pathType: Prefix
+        backend:
+          service:
+            name: argocd-server
+            port:
+              name: https

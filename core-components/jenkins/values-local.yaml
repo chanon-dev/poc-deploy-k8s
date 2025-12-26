@@ -1,0 +1,123 @@
+# Jenkins Helm Chart Values - LOCAL CONFIGURATION
+# สำหรับรันบนเครื่อง local (Minikube, Docker Desktop, etc.)
+
+controller:
+  componentName: "jenkins-controller"
+  image:
+    registry: docker.io
+    repository: jenkins/jenkins
+    tag: lts-jdk17
+  imagePullPolicy: "IfNotPresent"
+
+  # ลด resources สำหรับ local
+  resources:
+    requests:
+      cpu: "500m"      # ลดจาก 1000m
+      memory: "1Gi"    # ลดจาก 2Gi
+    limits:
+      cpu: "1"         # ลดจาก 2
+      memory: "2Gi"    # ลดจาก 4Gi
+
+  # Single instance (ไม่ต้องการ HA)
+  # replicaCount: 1
+
+  # JVM options
+  javaOpts: "-Xms1g -Xmx2g"  # ลดจาก 2g/4g
+
+  # Service - ใช้ ClusterIP แล้ว port-forward
+  serviceType: ClusterIP
+  servicePort: 8080
+
+  # Ingress Configuration
+  # เปิดใช้ Ingress สำหรับ local development
+  # หมายเหตุ: ต้องติดตั้ง NGINX Ingress Controller ก่อน (scripts/setup-ingress.sh)
+  ingress:
+    enabled: true
+    apiVersion: networking.k8s.io/v1
+    ingressClassName: nginx
+    annotations:
+      nginx.ingress.kubernetes.io/ssl-redirect: "false"
+      nginx.ingress.kubernetes.io/proxy-body-size: "50m"
+    hostName: jenkins.local
+    path: /
+
+  # Alternative: ปิด Ingress ถ้าต้องการใช้ port-forward แทน
+  # ingress:
+  #   enabled: false
+
+  # Admin credentials
+  admin:
+    username: "admin"
+    # password: "admin"  # ใช้ password ง่ายๆ สำหรับ local
+
+  # Install plugins
+  installPlugins:
+    - kubernetes:latest
+    - workflow-aggregator:latest
+    - git:latest
+    - configuration-as-code:latest
+    - blueocean:latest
+    - credentials-binding:latest
+
+  # Jenkins Configuration as Code (JCasC)
+  JCasC:
+    enabled: true
+    defaultConfig: true
+    configScripts:
+      welcome-message: |
+        jenkins:
+          systemMessage: "Jenkins - Local Development"
+      kubernetes-cloud: |
+        jenkins:
+          clouds:
+            - kubernetes:
+                name: "kubernetes"
+                serverUrl: "https://kubernetes.default"
+                namespace: "jenkins"
+                jenkinsUrl: "http://jenkins:8080"
+                jenkinsTunnel: "jenkins-agent:50000"
+                containerCapStr: "10"  # ลดจาก 100
+                templates:
+                  - name: "jenkins-agent"
+                    namespace: "jenkins"
+                    label: "jenkins-agent"
+                    containers:
+                      - name: "jnlp"
+                        image: "jenkins/inbound-agent:latest"
+                        workingDir: "/home/jenkins/agent"
+                        ttyEnabled: true
+                        resourceRequestCpu: "250m"    # ลด
+                        resourceRequestMemory: "256Mi" # ลด
+                        resourceLimitCpu: "500m"       # ลด
+                        resourceLimitMemory: "512Mi"   # ลด
+
+  # Persistent Volume - ลดขนาด
+  persistence:
+    enabled: true
+    size: "10Gi"  # ลดจาก 50Gi
+    accessMode: ReadWriteOnce
+
+# Agent configuration
+agent:
+  enabled: true
+  resources:
+    requests:
+      cpu: "250m"      # ลดจาก 500m
+      memory: "256Mi"  # ลดจาก 512Mi
+    limits:
+      cpu: "500m"      # ลดจาก 1000m
+      memory: "512Mi"  # ลดจาก 1Gi
+
+# Service Account
+serviceAccount:
+  create: true
+  name: "jenkins"
+
+# RBAC
+rbac:
+  create: true
+  readSecrets: true
+
+# Network Policy - ปิดไปก่อนสำหรับ local
+networkPolicy:
+  enabled: false

@@ -1,0 +1,34 @@
+# NGINX Ingress Controller for Docker Desktop Kubernetes
+# This uses the official NGINX Ingress Controller deployment
+# Optimized for local development
+
+# Note: This file is a reference.
+# For installation, use the official manifest:
+#   kubectl apply -f https://raw.githubusercontent.com/kubernetes/ingress-nginx/controller-v1.8.1/deploy/static/provider/cloud/deploy.yaml
+
+# Or for Docker Desktop specifically:
+#   kubectl apply -f https://raw.githubusercontent.com/kubernetes/ingress-nginx/controller-v1.8.1/deploy/static/provider/cloud/deploy.yaml
+
+# After installation, the ingress controller will be available at localhost:80 and localhost:443
+
+---
+# For manual installation reference, the main components are:
+# 1. Namespace: ingress-nginx
+# 2. ServiceAccount: ingress-nginx
+# 3. ConfigMap: ingress-nginx-controller
+# 4. ClusterRole & ClusterRoleBinding
+# 5. Role & RoleBinding
+# 6. Service: ingress-nginx-controller (Type: LoadBalancer)
+# 7. Deployment: ingress-nginx-controller
+
+# To install, run:
+# kubectl apply -f https://raw.githubusercontent.com/kubernetes/ingress-nginx/controller-v1.8.1/deploy/static/provider/cloud/deploy.yaml
+
+# To verify:
+# kubectl get pods -n ingress-nginx
+# kubectl get svc -n ingress-nginx
+
+# Expected output:
+# NAME                                        TYPE           CLUSTER-IP      EXTERNAL-IP   PORT(S)
+# ingress-nginx-controller                    LoadBalancer   10.96.x.x       localhost     80:xxxxx/TCP,443:xxxxx/TCP
+# ingress-nginx-controller-admission          ClusterIP      10.96.x.x       <none>        443/TCP

@@ -1,0 +1,103 @@
+# Example Argo CD Application
+# This defines an application to be deployed via GitOps
+
+---
+# Development Environment - Auto Sync
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: myapp-dev
+  namespace: argocd
+  labels:
+    environment: dev
+    app: myapp
+spec:
+  # Project
+  project: default
+
+  # Source repository
+  source:
+    repoURL: https://git.company.local/k8s-manifests.git
+    targetRevision: HEAD  # Track main branch
+    path: dev/myapp      # Path to manifests
+
+    # If using Helm
+    # helm:
+    #   valueFiles:
+    #     - values-dev.yaml
+
+  # Destination
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: dev
+
+  # Sync policy - Automated for dev
+  syncPolicy:
+    automated:
+      prune: true       # Remove resources not in Git
+      selfHeal: true    # Revert manual changes
+      allowEmpty: false
+    syncOptions:
+      - CreateNamespace=true
+      - PruneLast=true
+    retry:
+      limit: 5
+      backoff:
+        duration: 5s
+        factor: 2
+        maxDuration: 3m
+
+  # Ignore differences
+  ignoreDifferences:
+    - group: apps
+      kind: Deployment
+      jsonPointers:
+        - /spec/replicas  # Ignore replicas if using HPA
+
+---
+# Production Environment - Manual Sync
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: myapp-prod
+  namespace: argocd
+  labels:
+    environment: prod
+    app: myapp
+spec:
+  project: production
+
+  source:
+    repoURL: https://git.company.local/k8s-manifests.git
+    targetRevision: v1.0.0  # Use Git tags for prod
+    path: prod/myapp
+
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: prod
+
+  # Sync policy - Manual for prod
+  syncPolicy:
+    syncOptions:
+      - CreateNamespace=true
+      - PruneLast=true
+    # No automated section - requires manual sync
+
+  # Health check
+  health:
+    - group: apps
+      kind: Deployment
+      check: |
+        hs = {}
+        if obj.status ~= nil then
+          if obj.status.updatedReplicas == obj.spec.replicas and
+             obj.status.replicas == obj.spec.replicas and
+             obj.status.availableReplicas == obj.spec.replicas then
+            hs.status = "Healthy"
+            hs.message = "Deployment is healthy"
+            return hs
+          end
+        end
+        hs.status = "Progressing"
+        hs.message = "Waiting for deployment"
+        return hs

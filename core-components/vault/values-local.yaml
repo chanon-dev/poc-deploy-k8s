@@ -1,0 +1,119 @@
+# HashiCorp Vault Helm Chart Values - LOCAL CONFIGURATION
+# สำหรับรันบนเครื่อง local (Standalone mode, ไม่ใช่ HA)
+
+global:
+  enabled: true
+  tlsDisable: true  # ปิด TLS สำหรับ local
+
+# Vault Server - Standalone Mode
+server:
+  image:
+    repository: "hashicorp/vault"
+    tag: "1.15.2"
+    pullPolicy: IfNotPresent
+
+  # ใช้ Standalone แทน HA
+  ha:
+    enabled: false
+
+  standalone:
+    enabled: true
+    config: |
+      ui = true
+
+      listener "tcp" {
+        tls_disable = 1
+        address = "[::]:8200"
+        cluster_address = "[::]:8201"
+      }
+
+      storage "file" {
+        path = "/vault/data"
+      }
+
+      disable_mlock = true
+
+  # ลด resources สำหรับ local
+  resources:
+    requests:
+      memory: 256Mi  # ลดจาก 512Mi
+      cpu: 250m      # ลดจาก 500m
+    limits:
+      memory: 512Mi  # ลดจาก 1Gi
+      cpu: 500m      # ลดจาก 1000m
+
+  # Storage - ลดขนาด
+  dataStorage:
+    enabled: true
+    size: 5Gi        # ลดจาก 10Gi
+    storageClass: null
+    accessMode: ReadWriteOnce
+
+  auditStorage:
+    enabled: true
+    size: 5Gi        # ลดจาก 10Gi
+    storageClass: null
+    accessMode: ReadWriteOnce
+
+  # Service
+  service:
+    enabled: true
+    type: ClusterIP
+    port: 8200
+    targetPort: 8200
+
+  # Ingress Configuration
+  # เปิดใช้ Ingress สำหรับ local development
+  # หมายเหตุ: ต้องติดตั้ง NGINX Ingress Controller ก่อน (scripts/setup-ingress.sh)
+  ingress:
+    enabled: true
+    ingressClassName: nginx
+    annotations:
+      nginx.ingress.kubernetes.io/ssl-redirect: "false"
+    hosts:
+      - host: vault.local
+        paths:
+          - /
+
+  # Alternative: ปิด Ingress ถ้าต้องการใช้ port-forward แทน
+  # ingress:
+  #   enabled: false
+
+# Vault UI
+ui:
+  enabled: true
+  serviceType: "ClusterIP"
+  externalPort: 8200
+
+# Vault Injector
+injector:
+  enabled: true
+
+  image:
+    repository: "hashicorp/vault-k8s"
+    tag: "1.3.1"
+
+  # ลด resources
+  resources:
+    requests:
+      memory: 128Mi  # ลดจาก 256Mi
+      cpu: 125m      # ลดจาก 250m
+    limits:
+      memory: 256Mi  # ลดจาก 512Mi
+      cpu: 250m      # ลดจาก 500m
+
+  # Agent defaults - ลด resources
+  agentDefaults:
+    cpuLimit: "250m"       # ลดจาก 500m
+    cpuRequest: "125m"     # ลดจาก 250m
+    memLimit: "64Mi"       # ลดจาก 128Mi
+    memRequest: "32Mi"     # ลดจาก 64Mi
+
+# Service Account
+serverServiceAccount:
+  create: true
+  name: "vault"
+
+# RBAC
+rbac:
+  create: true

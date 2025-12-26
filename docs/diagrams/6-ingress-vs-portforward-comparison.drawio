@@ -1,0 +1,225 @@
+<mxfile host="app.diagrams.net" modified="2024-01-01T00:00:00.000Z" agent="5.0" version="22.1.0" etag="drawio" type="device">
+  <diagram name="Ingress vs Port-Forward" id="comparison">
+    <mxGraphModel dx="1434" dy="844" grid="1" gridSize="10" guides="1" tooltips="1" connect="1" arrows="1" fold="1" page="1" pageScale="1" pageWidth="1400" pageHeight="1200" math="0" shadow="0">
+      <root>
+        <mxCell id="0" />
+        <mxCell id="1" parent="0" />
+
+        <!-- Title -->
+        <mxCell id="title" value="Ingress vs Port-Forward - Which Should You Use?" style="text;html=1;strokeColor=none;fillColor=none;align=center;verticalAlign=middle;whiteSpace=wrap;rounded=0;fontSize=24;fontStyle=1" vertex="1" parent="1">
+          <mxGeometry x="300" y="20" width="800" height="40" as="geometry" />
+        </mxCell>
+
+        <!-- Ingress Column -->
+        <mxCell id="ingress-col" value="Option A: Ingress Controller" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#dae8fc;strokeColor=#6c8ebf;verticalAlign=top;fontSize=18;fontStyle=1;align=center" vertex="1" parent="1">
+          <mxGeometry x="80" y="100" width="600" height="1000" as="geometry" />
+        </mxCell>
+
+        <!-- Ingress Setup -->
+        <mxCell id="ingress-setup" value="Setup Complexity: ⭐⭐⭐ (Moderate)" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#fff2cc;strokeColor=#d6b656;fontSize=14;fontStyle=1" vertex="1" parent="1">
+          <mxGeometry x="100" y="150" width="560" height="40" as="geometry" />
+        </mxCell>
+
+        <mxCell id="ingress-setup-steps" value="Installation Steps:&#xa;1️⃣ Install NGINX Ingress Controller (one time)&#xa;2️⃣ Wait for LoadBalancer to be ready&#xa;3️⃣ Edit /etc/hosts file (requires sudo)&#xa;4️⃣ Create Ingress resources for each service&#xa;5️⃣ Apply configurations to cluster" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#ffffff;strokeColor=#d6b656;fontSize=12;align=left" vertex="1" parent="1">
+          <mxGeometry x="100" y="210" width="560" height="110" as="geometry" />
+        </mxCell>
+
+        <!-- Ingress Access -->
+        <mxCell id="ingress-access" value="Access Method: Clean URLs 🌐" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#d5e8d4;strokeColor=#82b366;fontSize=14;fontStyle=1" vertex="1" parent="1">
+          <mxGeometry x="100" y="340" width="560" height="40" as="geometry" />
+        </mxCell>
+
+        <mxCell id="ingress-urls" value="URLs:&#xa;✅ http://jenkins.local&#xa;✅ https://argocd.local&#xa;✅ http://vault.local&#xa;&#xa;Benefits:&#xa;• Easy to remember&#xa;• Professional-looking&#xa;• Can share with team members" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#ffffff;strokeColor=#82b366;fontSize=12;align=left" vertex="1" parent="1">
+          <mxGeometry x="100" y="400" width="560" height="130" as="geometry" />
+        </mxCell>
+
+        <!-- Ingress Pros -->
+        <mxCell id="ingress-pros" value="✅ Advantages" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#d5e8d4;strokeColor=#82b366;fontSize=14;fontStyle=1" vertex="1" parent="1">
+          <mxGeometry x="100" y="550" width="560" height="40" as="geometry" />
+        </mxCell>
+
+        <mxCell id="ingress-pros-list" value="• Production-like environment (same setup as real servers)&#xa;• No need to keep terminal running&#xa;• Multiple services accessible simultaneously&#xa;• SSL/TLS ready (HTTPS support)&#xa;• Path-based and Host-based routing&#xa;• Load balancing built-in&#xa;• Better for demos and presentations&#xa;• Learn real-world Kubernetes patterns&#xa;• Team can access via same URLs&#xa;• Can use real domain names (with DNS)" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#ffffff;strokeColor=#82b366;fontSize=11;align=left" vertex="1" parent="1">
+          <mxGeometry x="100" y="610" width="560" height="170" as="geometry" />
+        </mxCell>
+
+        <!-- Ingress Cons -->
+        <mxCell id="ingress-cons" value="❌ Disadvantages" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#f8cecc;strokeColor=#b85450;fontSize=14;fontStyle=1" vertex="1" parent="1">
+          <mxGeometry x="100" y="800" width="560" height="40" as="geometry" />
+        </mxCell>
+
+        <mxCell id="ingress-cons-list" value="• More complex initial setup&#xa;• Requires editing /etc/hosts (sudo access)&#xa;• Uses more cluster resources (Ingress Controller pods)&#xa;• Need to understand Ingress concepts&#xa;• Troubleshooting can be harder&#xa;• Additional YAML files to manage" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#ffffff;strokeColor=#b85450;fontSize=11;align=left" vertex="1" parent="1">
+          <mxGeometry x="100" y="860" width="560" height="110" as="geometry" />
+        </mxCell>
+
+        <!-- Ingress Best For -->
+        <mxCell id="ingress-best" value="👍 Best For:" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#e1d5e7;strokeColor=#9673a6;fontSize=14;fontStyle=1" vertex="1" parent="1">
+          <mxGeometry x="100" y="990" width="560" height="40" as="geometry" />
+        </mxCell>
+
+        <mxCell id="ingress-best-list" value="• Learning production Kubernetes setup&#xa;• Demos and presentations&#xa;• Team environments (shared access)&#xa;• Testing production-like configurations&#xa;• When you want clean URLs" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#ffffff;strokeColor=#9673a6;fontSize=11;align=left" vertex="1" parent="1">
+          <mxGeometry x="100" y="1050" width="560" height="90" as="geometry" />
+        </mxCell>
+
+        <!-- Port-Forward Column -->
+        <mxCell id="portforward-col" value="Option B: Port-Forward" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#ffe6cc;strokeColor=#d79b00;verticalAlign=top;fontSize=18;fontStyle=1;align=center" vertex="1" parent="1">
+          <mxGeometry x="720" y="100" width="600" height="1000" as="geometry" />
+        </mxCell>
+
+        <!-- Port-Forward Setup -->
+        <mxCell id="pf-setup" value="Setup Complexity: ⭐ (Very Easy)" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#fff2cc;strokeColor=#d6b656;fontSize=14;fontStyle=1" vertex="1" parent="1">
+          <mxGeometry x="740" y="150" width="560" height="40" as="geometry" />
+        </mxCell>
+
+        <mxCell id="pf-setup-steps" value="Installation Steps:&#xa;1️⃣ Just run one kubectl command&#xa;&#xa;That's it! No infrastructure setup needed." style="rounded=1;whiteSpace=wrap;html=1;fillColor=#ffffff;strokeColor=#d6b656;fontSize=12;align=left" vertex="1" parent="1">
+          <mxGeometry x="740" y="210" width="560" height="110" as="geometry" />
+        </mxCell>
+
+        <!-- Port-Forward Access -->
+        <mxCell id="pf-access" value="Access Method: localhost with ports 💻" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#d5e8d4;strokeColor=#82b366;fontSize=14;fontStyle=1" vertex="1" parent="1">
+          <mxGeometry x="740" y="340" width="560" height="40" as="geometry" />
+        </mxCell>
+
+        <mxCell id="pf-urls" value="URLs:&#xa;⚠️ http://localhost:8080  (Jenkins)&#xa;⚠️ https://localhost:8443 (Argo CD)&#xa;⚠️ http://localhost:8200  (Vault)&#xa;&#xa;Drawbacks:&#xa;• Need to remember port numbers&#xa;• localhost only (can't share easily)" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#ffffff;strokeColor=#82b366;fontSize=12;align=left" vertex="1" parent="1">
+          <mxGeometry x="740" y="400" width="560" height="130" as="geometry" />
+        </mxCell>
+
+        <!-- Port-Forward Pros -->
+        <mxCell id="pf-pros" value="✅ Advantages" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#d5e8d4;strokeColor=#82b366;fontSize=14;fontStyle=1" vertex="1" parent="1">
+          <mxGeometry x="740" y="550" width="560" height="40" as="geometry" />
+        </mxCell>
+
+        <mxCell id="pf-pros-list" value="• Extremely simple - one command&#xa;• Works immediately, no setup&#xa;• No infrastructure components needed&#xa;• No /etc/hosts modification required&#xa;• Low resource usage (no Ingress Controller)&#xa;• Easy to stop and start&#xa;• Perfect for quick testing&#xa;• Direct connection to services&#xa;• No DNS or routing configuration&#xa;• Works on any OS without admin rights" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#ffffff;strokeColor=#82b366;fontSize=11;align=left" vertex="1" parent="1">
+          <mxGeometry x="740" y="610" width="560" height="170" as="geometry" />
+        </mxCell>
+
+        <!-- Port-Forward Cons -->
+        <mxCell id="pf-cons" value="❌ Disadvantages" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#f8cecc;strokeColor=#b85450;fontSize=14;fontStyle=1" vertex="1" parent="1">
+          <mxGeometry x="740" y="800" width="560" height="40" as="geometry" />
+        </mxCell>
+
+        <mxCell id="pf-cons-list" value="• Must keep terminal running (or run in background)&#xa;• Different from production setup&#xa;• Need one command per service&#xa;• Ugly localhost URLs with port numbers&#xa;• Can't easily share access with team&#xa;• Terminal clutter (multiple sessions)&#xa;• If terminal crashes, access lost&#xa;• Doesn't teach production patterns" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#ffffff;strokeColor=#b85450;fontSize=11;align=left" vertex="1" parent="1">
+          <mxGeometry x="740" y="860" width="560" height="140" as="geometry" />
+        </mxCell>
+
+        <!-- Port-Forward Best For -->
+        <mxCell id="pf-best" value="👍 Best For:" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#e1d5e7;strokeColor=#9673a6;fontSize=14;fontStyle=1" vertex="1" parent="1">
+          <mxGeometry x="740" y="1020" width="560" height="40" as="geometry" />
+        </mxCell>
+
+        <mxCell id="pf-best-list" value="• Daily development work (recommended!)&#xa;• Quick testing and debugging&#xa;• Solo developer environment&#xa;• When you want simplicity over realism&#xa;• Limited machine resources" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#ffffff;strokeColor=#9673a6;fontSize=11;align=left" vertex="1" parent="1">
+          <mxGeometry x="740" y="1080" width="560" height="90" as="geometry" />
+        </mxCell>
+
+        <!-- VS Badge -->
+        <mxCell id="vs-badge" value="VS" style="ellipse;whiteSpace=wrap;html=1;fillColor=#FF6600;strokeColor=#FF0000;fontSize=32;fontStyle=1;fontColor=#FFFFFF" vertex="1" parent="1">
+          <mxGeometry x="650" y="80" width="100" height="100" as="geometry" />
+        </mxCell>
+
+        <!-- Comparison Table -->
+        <mxCell id="comparison-table" value="Quick Comparison Table" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#f5f5f5;strokeColor=#666666;verticalAlign=top;fontSize=16;fontStyle=1;align=center" vertex="1" parent="1">
+          <mxGeometry x="80" y="1180" width="1240" height="280" as="geometry" />
+        </mxCell>
+
+        <!-- Table Header -->
+        <mxCell id="table-header1" value="Feature" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#666666;strokeColor=#666666;fontSize=12;fontStyle=1;fontColor=#FFFFFF" vertex="1" parent="1">
+          <mxGeometry x="100" y="1220" width="300" height="30" as="geometry" />
+        </mxCell>
+
+        <mxCell id="table-header2" value="Ingress Controller" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#6c8ebf;strokeColor=#6c8ebf;fontSize=12;fontStyle=1;fontColor=#FFFFFF" vertex="1" parent="1">
+          <mxGeometry x="400" y="1220" width="440" height="30" as="geometry" />
+        </mxCell>
+
+        <mxCell id="table-header3" value="Port-Forward" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#d79b00;strokeColor=#d79b00;fontSize=12;fontStyle=1;fontColor=#FFFFFF" vertex="1" parent="1">
+          <mxGeometry x="840" y="1220" width="440" height="30" as="geometry" />
+        </mxCell>
+
+        <!-- Row 1 -->
+        <mxCell id="row1-1" value="Setup Difficulty" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#e1e1e1;strokeColor=#999999;fontSize=11;fontStyle=1" vertex="1" parent="1">
+          <mxGeometry x="100" y="1250" width="300" height="30" as="geometry" />
+        </mxCell>
+        <mxCell id="row1-2" value="Moderate (one-time setup)" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#ffffff;strokeColor=#999999;fontSize=11" vertex="1" parent="1">
+          <mxGeometry x="400" y="1250" width="440" height="30" as="geometry" />
+        </mxCell>
+        <mxCell id="row1-3" value="Very Easy (instant)" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#ffffff;strokeColor=#999999;fontSize=11" vertex="1" parent="1">
+          <mxGeometry x="840" y="1250" width="440" height="30" as="geometry" />
+        </mxCell>
+
+        <!-- Row 2 -->
+        <mxCell id="row2-1" value="URL Format" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#e1e1e1;strokeColor=#999999;fontSize=11;fontStyle=1" vertex="1" parent="1">
+          <mxGeometry x="100" y="1280" width="300" height="30" as="geometry" />
+        </mxCell>
+        <mxCell id="row2-2" value="http://service.local" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#ffffff;strokeColor=#999999;fontSize=11;fontFamily=Courier New" vertex="1" parent="1">
+          <mxGeometry x="400" y="1280" width="440" height="30" as="geometry" />
+        </mxCell>
+        <mxCell id="row2-3" value="http://localhost:port" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#ffffff;strokeColor=#999999;fontSize=11;fontFamily=Courier New" vertex="1" parent="1">
+          <mxGeometry x="840" y="1280" width="440" height="30" as="geometry" />
+        </mxCell>
+
+        <!-- Row 3 -->
+        <mxCell id="row3-1" value="Terminal Required" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#e1e1e1;strokeColor=#999999;fontSize=11;fontStyle=1" vertex="1" parent="1">
+          <mxGeometry x="100" y="1310" width="300" height="30" as="geometry" />
+        </mxCell>
+        <mxCell id="row3-2" value="❌ No" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#d5e8d4;strokeColor=#999999;fontSize=11;fontStyle=1" vertex="1" parent="1">
+          <mxGeometry x="400" y="1310" width="440" height="30" as="geometry" />
+        </mxCell>
+        <mxCell id="row3-3" value="⚠️ Yes (must keep running)" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#f8cecc;strokeColor=#999999;fontSize=11;fontStyle=1" vertex="1" parent="1">
+          <mxGeometry x="840" y="1310" width="440" height="30" as="geometry" />
+        </mxCell>
+
+        <!-- Row 4 -->
+        <mxCell id="row4-1" value="Production-like" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#e1e1e1;strokeColor=#999999;fontSize=11;fontStyle=1" vertex="1" parent="1">
+          <mxGeometry x="100" y="1340" width="300" height="30" as="geometry" />
+        </mxCell>
+        <mxCell id="row4-2" value="✅ Yes" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#d5e8d4;strokeColor=#999999;fontSize=11;fontStyle=1" vertex="1" parent="1">
+          <mxGeometry x="400" y="1340" width="440" height="30" as="geometry" />
+        </mxCell>
+        <mxCell id="row4-3" value="❌ No" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#f8cecc;strokeColor=#999999;fontSize=11;fontStyle=1" vertex="1" parent="1">
+          <mxGeometry x="840" y="1340" width="440" height="30" as="geometry" />
+        </mxCell>
+
+        <!-- Row 5 -->
+        <mxCell id="row5-1" value="Resource Usage" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#e1e1e1;strokeColor=#999999;fontSize=11;fontStyle=1" vertex="1" parent="1">
+          <mxGeometry x="100" y="1370" width="300" height="30" as="geometry" />
+        </mxCell>
+        <mxCell id="row5-2" value="Higher (Ingress Controller pods)" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#ffffff;strokeColor=#999999;fontSize=11" vertex="1" parent="1">
+          <mxGeometry x="400" y="1370" width="440" height="30" as="geometry" />
+        </mxCell>
+        <mxCell id="row5-3" value="Lower (no extra pods)" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#ffffff;strokeColor=#999999;fontSize=11" vertex="1" parent="1">
+          <mxGeometry x="840" y="1370" width="440" height="30" as="geometry" />
+        </mxCell>
+
+        <!-- Row 6 -->
+        <mxCell id="row6-1" value="SSL/TLS Support" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#e1e1e1;strokeColor=#999999;fontSize=11;fontStyle=1" vertex="1" parent="1">
+          <mxGeometry x="100" y="1400" width="300" height="30" as="geometry" />
+        </mxCell>
+        <mxCell id="row6-2" value="✅ Yes (built-in)" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#d5e8d4;strokeColor=#999999;fontSize=11;fontStyle=1" vertex="1" parent="1">
+          <mxGeometry x="400" y="1400" width="440" height="30" as="geometry" />
+        </mxCell>
+        <mxCell id="row6-3" value="⚠️ Depends on service" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#fff2cc;strokeColor=#999999;fontSize=11;fontStyle=1" vertex="1" parent="1">
+          <mxGeometry x="840" y="1400" width="440" height="30" as="geometry" />
+        </mxCell>
+
+        <!-- Row 7 -->
+        <mxCell id="row7-1" value="Recommended For" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#e1e1e1;strokeColor=#999999;fontSize=11;fontStyle=1" vertex="1" parent="1">
+          <mxGeometry x="100" y="1430" width="300" height="30" as="geometry" />
+        </mxCell>
+        <mxCell id="row7-2" value="Learning, Demos, Team" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#ffffff;strokeColor=#999999;fontSize=11" vertex="1" parent="1">
+          <mxGeometry x="400" y="1430" width="440" height="30" as="geometry" />
+        </mxCell>
+        <mxCell id="row7-3" value="Daily Development" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#d5e8d4;strokeColor=#999999;fontSize=11;fontStyle=1" vertex="1" parent="1">
+          <mxGeometry x="840" y="1430" width="440" height="30" as="geometry" />
+        </mxCell>
+
+        <!-- Recommendation -->
+        <mxCell id="recommendation" value="💡 Our Recommendation" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#cdeb8b;strokeColor=#36393d;verticalAlign=top;fontSize=18;fontStyle=1;align=center" vertex="1" parent="1">
+          <mxGeometry x="80" y="1500" width="1240" height="160" as="geometry" />
+        </mxCell>
+
+        <mxCell id="rec-text" value="For Daily Development: Use Port-Forward ⭐&#xa;• It's simple, fast, and gets the job done&#xa;• Perfect for solo developers working locally&#xa;&#xa;For Learning Kubernetes: Use Ingress ⭐⭐⭐&#xa;• You'll learn production patterns&#xa;• Better understanding of how real systems work&#xa;&#xa;For Team Environments or Demos: Use Ingress ⭐⭐⭐&#xa;• Professional URLs, easy to share&#xa;• Closer to production setup" style="text;html=1;strokeColor=none;fillColor=none;align=left;verticalAlign=top;whiteSpace=wrap;rounded=0;fontSize=13" vertex="1" parent="1">
+          <mxGeometry x="100" y="1540" width="1200" height="140" as="geometry" />
+        </mxCell>
+
+      </root>
+    </mxGraphModel>
+  </diagram>
+</mxfile>

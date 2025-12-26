@@ -1,0 +1,199 @@
+# Argo CD Helm Chart Values
+# Install: helm install argocd argo/argo-cd -f values.yaml -n argocd
+
+global:
+  image:
+    repository: quay.io/argoproj/argocd
+    tag: v2.9.3
+
+## Argo CD Server
+server:
+  name: server
+
+  replicas: 2  # HA mode
+
+  resources:
+    requests:
+      cpu: 250m
+      memory: 512Mi
+    limits:
+      cpu: 500m
+      memory: 1Gi
+
+  # Service configuration
+  service:
+    type: ClusterIP
+    servicePortHttp: 80
+    servicePortHttps: 443
+
+  # Ingress configuration
+  ingress:
+    enabled: true
+    ingressClassName: nginx
+    annotations:
+      cert-manager.io/cluster-issuer: "letsencrypt-prod"
+      nginx.ingress.kubernetes.io/ssl-redirect: "true"
+      nginx.ingress.kubernetes.io/backend-protocol: "HTTP"
+    hosts:
+      - argocd.company.local
+    tls:
+      - secretName: argocd-server-tls
+        hosts:
+          - argocd.company.local
+
+  # Config
+  config:
+    # URL for Argo CD
+    url: https://argocd.company.local
+
+    # Repositories
+    repositories: |
+      - url: https://git.company.local/k8s-manifests.git
+        name: k8s-manifests
+        type: git
+      - url: https://git.company.local/helm-charts.git
+        name: helm-charts
+        type: helm
+
+    # RBAC config
+    rbac.policy.default: role:readonly
+    rbac.policy.csv: |
+      # Admins - Full access
+      g, platform-team, role:admin
+
+      # Developers - Limited access
+      p, role:developer, applications, get, */*, allow
+      p, role:developer, applications, sync, */*, allow
+      p, role:developer, logs, get, */*, allow
+      p, role:developer, exec, create, */*, deny
+      g, developers, role:developer
+
+  # Additional command line arguments
+  extraArgs:
+    - --insecure  # If not using TLS (remove in production)
+
+## Argo CD Application Controller
+controller:
+  name: application-controller
+
+  replicas: 1
+
+  resources:
+    requests:
+      cpu: 500m
+      memory: 1Gi
+    limits:
+      cpu: 1000m
+      memory: 2Gi
+
+  # Metrics
+  metrics:
+    enabled: true
+    serviceMonitor:
+      enabled: true
+
+## Argo CD Repo Server
+repoServer:
+  name: repo-server
+
+  replicas: 2
+
+  resources:
+    requests:
+      cpu: 250m
+      memory: 512Mi
+    limits:
+      cpu: 500m
+      memory: 1Gi
+
+  # Metrics
+  metrics:
+    enabled: true
+    serviceMonitor:
+      enabled: true
+
+## Redis (for caching)
+redis:
+  enabled: true
+  name: redis
+
+  resources:
+    requests:
+      cpu: 100m
+      memory: 128Mi
+    limits:
+      cpu: 200m
+      memory: 256Mi
+
+## Dex (SSO - Optional)
+dex:
+  enabled: false  # Enable if you want SSO integration
+
+## Notifications Controller (Optional)
+notifications:
+  enabled: true
+  name: notifications-controller
+
+  argocdUrl: https://argocd.company.local
+
+  # Notification services
+  notifiers:
+    service.slack: |
+      token: $slack-token
+    service.email: |
+      username: $email-username
+      password: $email-password
+      host: smtp.company.local
+      port: 587
+      from: argocd@company.local
+
+  # Notification templates
+  templates:
+    template.app-deployed: |
+      message: |
+        Application {{.app.metadata.name}} is now running new version.
+    template.app-sync-failed: |
+      message: |
+        Application {{.app.metadata.name}} sync failed.
+
+  # Notification triggers
+  triggers:
+    trigger.on-deployed: |
+      - when: app.status.operationState.phase in ['Succeeded']
+        send: [app-deployed]
+    trigger.on-sync-failed: |
+      - when: app.status.operationState.phase in ['Error', 'Failed']
+        send: [app-sync-failed]
+
+## Configs
+configs:
+  # Secret management
+  secret:
+    createSecret: true
+    # argocdServerAdminPassword: ""  # bcrypt hash of password
+    # argocdServerAdminPasswordMtime: "2024-01-01T00:00:00Z"
+
+  # Cluster credentials
+  clusterCredentials: []
+
+  # Repository credentials
+  credentialTemplates:
+    github-creds:
+      url: https://git.company.local
+      type: git
+      # username: ""
+      # password: ""
+
+  # Known hosts for Git
+  ssh:
+    knownHosts: |
+      # Add your Git server's SSH key fingerprint here
+
+# Service Account
+serviceAccount:
+  create: true
+  name: argocd-server
+
+# RBAC
+rbac:
+  create: true

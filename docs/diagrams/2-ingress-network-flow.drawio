@@ -1,0 +1,214 @@
+<mxfile host="app.diagrams.net" modified="2024-01-01T00:00:00.000Z" agent="5.0" version="22.1.0" etag="drawio" type="device">
+  <diagram name="Ingress Network Flow" id="ingress-flow">
+    <mxGraphModel dx="1434" dy="844" grid="1" gridSize="10" guides="1" tooltips="1" connect="1" arrows="1" fold="1" page="1" pageScale="1" pageWidth="1400" pageHeight="900" math="0" shadow="0">
+      <root>
+        <mxCell id="0" />
+        <mxCell id="1" parent="0" />
+
+        <!-- Title -->
+        <mxCell id="title" value="Ingress Network Flow - Access via Hostname" style="text;html=1;strokeColor=none;fillColor=none;align=center;verticalAlign=middle;whiteSpace=wrap;rounded=0;fontSize=22;fontStyle=1" vertex="1" parent="1">
+          <mxGeometry x="350" y="20" width="700" height="40" as="geometry" />
+        </mxCell>
+
+        <!-- User -->
+        <mxCell id="user" value="👤&#xa;User Browser" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#cdeb8b;strokeColor=#36393d;fontSize=14;fontStyle=1" vertex="1" parent="1">
+          <mxGeometry x="80" y="150" width="160" height="100" as="geometry" />
+        </mxCell>
+
+        <!-- /etc/hosts -->
+        <mxCell id="etchosts" value="/etc/hosts&#xa;&#xa;127.0.0.1 jenkins.local&#xa;127.0.0.1 argocd.local&#xa;127.0.0.1 vault.local" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#fff2cc;strokeColor=#d6b656;fontSize=11;align=left" vertex="1" parent="1">
+          <mxGeometry x="80" y="300" width="160" height="120" as="geometry" />
+        </mxCell>
+
+        <!-- Connection: User to /etc/hosts -->
+        <mxCell id="conn-user-hosts" value="1. DNS Lookup" style="endArrow=classic;html=1;rounded=0;exitX=0.5;exitY=1;exitDx=0;exitDy=0;entryX=0.5;entryY=0;entryDx=0;entryDy=0;strokeWidth=2;strokeColor=#0066CC" edge="1" parent="1" source="user" target="etchosts">
+          <mxGeometry width="50" height="50" relative="1" as="geometry">
+            <mxPoint x="600" y="400" as="sourcePoint" />
+            <mxPoint x="650" y="350" as="targetPoint" />
+          </mxGeometry>
+        </mxCell>
+
+        <!-- LoadBalancer -->
+        <mxCell id="loadbalancer" value="LoadBalancer&#xa;127.0.0.1:80&#xa;127.0.0.1:443&#xa;&#xa;(Docker Desktop automatically&#xa;assigns localhost)" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#e1d5e7;strokeColor=#9673a6;fontSize=12;fontStyle=1" vertex="1" parent="1">
+          <mxGeometry x="320" y="150" width="200" height="140" as="geometry" />
+        </mxCell>
+
+        <!-- Connection: /etc/hosts to LoadBalancer -->
+        <mxCell id="conn-hosts-lb" value="2. HTTP Request&#xa;http://jenkins.local" style="endArrow=classic;html=1;rounded=0;exitX=1;exitY=0.5;exitDx=0;exitDy=0;entryX=0;entryY=0.5;entryDx=0;entryDy=0;strokeWidth=2;strokeColor=#0066CC" edge="1" parent="1" source="etchosts" target="loadbalancer">
+          <mxGeometry x="-0.2" width="50" height="50" relative="1" as="geometry">
+            <mxPoint x="600" y="400" as="sourcePoint" />
+            <mxPoint x="650" y="350" as="targetPoint" />
+            <mxPoint as="offset" />
+          </mxGeometry>
+        </mxCell>
+
+        <!-- NGINX Ingress Controller -->
+        <mxCell id="ingress-ctrl" value="NGINX Ingress Controller&#xa;&#xa;namespace: ingress-nginx&#xa;pod: ingress-nginx-controller-xxx&#xa;&#xa;Routing Rules:&#xa;• jenkins.local → jenkins svc&#xa;• argocd.local → argocd svc&#xa;• vault.local → vault svc" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#dae8fc;strokeColor=#6c8ebf;fontSize=12;fontStyle=1;align=left" vertex="1" parent="1">
+          <mxGeometry x="600" y="120" width="280" height="200" as="geometry" />
+        </mxCell>
+
+        <!-- Connection: LoadBalancer to Ingress -->
+        <mxCell id="conn-lb-ingress" value="3. Forward to&#xa;Ingress Controller" style="endArrow=classic;html=1;rounded=0;exitX=1;exitY=0.5;exitDx=0;exitDy=0;entryX=0;entryY=0.5;entryDx=0;entryDy=0;strokeWidth=3;strokeColor=#CC0000" edge="1" parent="1" source="loadbalancer" target="ingress-ctrl">
+          <mxGeometry width="50" height="50" relative="1" as="geometry">
+            <mxPoint x="600" y="400" as="sourcePoint" />
+            <mxPoint x="650" y="350" as="targetPoint" />
+          </mxGeometry>
+        </mxCell>
+
+        <!-- Services Layer -->
+        <mxCell id="services-box" value="Services (ClusterIP)" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#d5e8d4;strokeColor=#82b366;verticalAlign=top;fontSize=14;fontStyle=1" vertex="1" parent="1">
+          <mxGeometry x="960" y="120" width="360" height="200" as="geometry" />
+        </mxCell>
+
+        <!-- Jenkins Service -->
+        <mxCell id="jenkins-svc" value="jenkins&#xa;Service&#xa;namespace: jenkins&#xa;port: 8080" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#b1ddf0;strokeColor=#10739e;fontSize=11" vertex="1" parent="1">
+          <mxGeometry x="1000" y="160" width="100" height="140" as="geometry" />
+        </mxCell>
+
+        <!-- ArgoCD Service -->
+        <mxCell id="argocd-svc" value="argocd-server&#xa;Service&#xa;namespace: argocd&#xa;port: 80/443" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#fad9d5;strokeColor=#ae4132;fontSize=11" vertex="1" parent="1">
+          <mxGeometry x="1120" y="160" width="100" height="140" as="geometry" />
+        </mxCell>
+
+        <!-- Vault Service -->
+        <mxCell id="vault-svc" value="vault&#xa;Service&#xa;namespace: vault&#xa;port: 8200" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#f8cecc;strokeColor=#b85450;fontSize=11" vertex="1" parent="1">
+          <mxGeometry x="1240" y="160" width="100" height="140" as="geometry" />
+        </mxCell>
+
+        <!-- Connection: Ingress to Jenkins -->
+        <mxCell id="conn-ing-jenkins" value="4a. Route&#xa;jenkins.local" style="endArrow=classic;html=1;rounded=0;exitX=1;exitY=0.25;exitDx=0;exitDy=0;entryX=0;entryY=0.5;entryDx=0;entryDy=0;strokeWidth=2;strokeColor=#0066CC" edge="1" parent="1" source="ingress-ctrl" target="jenkins-svc">
+          <mxGeometry width="50" height="50" relative="1" as="geometry">
+            <mxPoint x="600" y="500" as="sourcePoint" />
+            <mxPoint x="650" y="450" as="targetPoint" />
+          </mxGeometry>
+        </mxCell>
+
+        <!-- Connection: Ingress to ArgoCD -->
+        <mxCell id="conn-ing-argocd" value="4b. Route&#xa;argocd.local" style="endArrow=classic;html=1;rounded=0;exitX=1;exitY=0.5;exitDx=0;exitDy=0;entryX=0;entryY=0.5;entryDx=0;entryDy=0;strokeWidth=2;strokeColor=#CC0000" edge="1" parent="1" source="ingress-ctrl" target="argocd-svc">
+          <mxGeometry width="50" height="50" relative="1" as="geometry">
+            <mxPoint x="600" y="500" as="sourcePoint" />
+            <mxPoint x="650" y="450" as="targetPoint" />
+          </mxGeometry>
+        </mxCell>
+
+        <!-- Connection: Ingress to Vault -->
+        <mxCell id="conn-ing-vault" value="4c. Route&#xa;vault.local" style="endArrow=classic;html=1;rounded=0;exitX=1;exitY=0.75;exitDx=0;exitDy=0;entryX=0;entryY=0.5;entryDx=0;entryDy=0;strokeWidth=2;strokeColor=#009900" edge="1" parent="1" source="ingress-ctrl" target="vault-svc">
+          <mxGeometry width="50" height="50" relative="1" as="geometry">
+            <mxPoint x="600" y="500" as="sourcePoint" />
+            <mxPoint x="650" y="450" as="targetPoint" />
+          </mxGeometry>
+        </mxCell>
+
+        <!-- Pods Layer -->
+        <mxCell id="pods-box" value="Pods" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#fff2cc;strokeColor=#d6b656;verticalAlign=top;fontSize=14;fontStyle=1" vertex="1" parent="1">
+          <mxGeometry x="960" y="360" width="360" height="180" as="geometry" />
+        </mxCell>
+
+        <!-- Jenkins Pod -->
+        <mxCell id="jenkins-pod" value="jenkins-xxx&#xa;Pod&#xa;Container Port: 8080" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#b1ddf0;strokeColor=#10739e;fontSize=11" vertex="1" parent="1">
+          <mxGeometry x="1000" y="400" width="100" height="120" as="geometry" />
+        </mxCell>
+
+        <!-- ArgoCD Pod -->
+        <mxCell id="argocd-pod" value="argocd-server-xxx&#xa;Pod&#xa;Container Port: 8080" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#fad9d5;strokeColor=#ae4132;fontSize=11" vertex="1" parent="1">
+          <mxGeometry x="1120" y="400" width="100" height="120" as="geometry" />
+        </mxCell>
+
+        <!-- Vault Pod -->
+        <mxCell id="vault-pod" value="vault-0&#xa;Pod (StatefulSet)&#xa;Container Port: 8200" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#f8cecc;strokeColor=#b85450;fontSize=11" vertex="1" parent="1">
+          <mxGeometry x="1240" y="400" width="100" height="120" as="geometry" />
+        </mxCell>
+
+        <!-- Connection: Service to Pods -->
+        <mxCell id="conn-svc-pod-j" value="5a" style="endArrow=classic;html=1;rounded=0;exitX=0.5;exitY=1;exitDx=0;exitDy=0;entryX=0.5;entryY=0;entryDx=0;entryDy=0;strokeWidth=2;strokeColor=#0066CC" edge="1" parent="1" source="jenkins-svc" target="jenkins-pod">
+          <mxGeometry width="50" height="50" relative="1" as="geometry">
+            <mxPoint x="600" y="500" as="sourcePoint" />
+            <mxPoint x="650" y="450" as="targetPoint" />
+          </mxGeometry>
+        </mxCell>
+
+        <mxCell id="conn-svc-pod-a" value="5b" style="endArrow=classic;html=1;rounded=0;exitX=0.5;exitY=1;exitDx=0;exitDy=0;entryX=0.5;entryY=0;entryDx=0;entryDy=0;strokeWidth=2;strokeColor=#CC0000" edge="1" parent="1" source="argocd-svc" target="argocd-pod">
+          <mxGeometry width="50" height="50" relative="1" as="geometry">
+            <mxPoint x="600" y="500" as="sourcePoint" />
+            <mxPoint x="650" y="450" as="targetPoint" />
+          </mxGeometry>
+        </mxCell>
+
+        <mxCell id="conn-svc-pod-v" value="5c" style="endArrow=classic;html=1;rounded=0;exitX=0.5;exitY=1;exitDx=0;exitDy=0;entryX=0.5;entryY=0;entryDx=0;entryDy=0;strokeWidth=2;strokeColor=#009900" edge="1" parent="1" source="vault-svc" target="vault-pod">
+          <mxGeometry width="50" height="50" relative="1" as="geometry">
+            <mxPoint x="600" y="500" as="sourcePoint" />
+            <mxPoint x="650" y="450" as="targetPoint" />
+          </mxGeometry>
+        </mxCell>
+
+        <!-- Flow Description -->
+        <mxCell id="flow-desc" value="Traffic Flow Steps:" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#f5f5f5;strokeColor=#666666;verticalAlign=top;fontSize=14;fontStyle=1;align=left" vertex="1" parent="1">
+          <mxGeometry x="80" y="600" width="1240" height="240" as="geometry" />
+        </mxCell>
+
+        <mxCell id="step1" value="1️⃣ User types http://jenkins.local in browser" style="text;html=1;strokeColor=none;fillColor=none;align=left;verticalAlign=middle;whiteSpace=wrap;rounded=0;fontSize=12" vertex="1" parent="1">
+          <mxGeometry x="100" y="640" width="400" height="30" as="geometry" />
+        </mxCell>
+
+        <mxCell id="step2" value="2️⃣ Browser looks up DNS → /etc/hosts resolves jenkins.local to 127.0.0.1" style="text;html=1;strokeColor=none;fillColor=none;align=left;verticalAlign=middle;whiteSpace=wrap;rounded=0;fontSize=12" vertex="1" parent="1">
+          <mxGeometry x="100" y="680" width="600" height="30" as="geometry" />
+        </mxCell>
+
+        <mxCell id="step3" value="3️⃣ Request sent to 127.0.0.1:80 → LoadBalancer forwards to NGINX Ingress Controller" style="text;html=1;strokeColor=none;fillColor=none;align=left;verticalAlign=middle;whiteSpace=wrap;rounded=0;fontSize=12" vertex="1" parent="1">
+          <mxGeometry x="100" y="720" width="700" height="30" as="geometry" />
+        </mxCell>
+
+        <mxCell id="step4" value="4️⃣ Ingress Controller checks Host header (jenkins.local) and routes to matching service:&#xa;     • jenkins.local → jenkins service (namespace: jenkins, port: 8080)&#xa;     • argocd.local → argocd-server service (namespace: argocd, port: 80)&#xa;     • vault.local → vault service (namespace: vault, port: 8200)" style="text;html=1;strokeColor=none;fillColor=none;align=left;verticalAlign=top;whiteSpace=wrap;rounded=0;fontSize=12" vertex="1" parent="1">
+          <mxGeometry x="100" y="760" width="800" height="80" as="geometry" />
+        </mxCell>
+
+        <mxCell id="step5" value="5️⃣ Service forwards request to Pod (container port)" style="text;html=1;strokeColor=none;fillColor=none;align=left;verticalAlign=middle;whiteSpace=wrap;rounded=0;fontSize=12" vertex="1" parent="1">
+          <mxGeometry x="100" y="850" width="500" height="30" as="geometry" />
+        </mxCell>
+
+        <!-- Benefits -->
+        <mxCell id="benefits" value="✅ Benefits of Ingress:" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#d5e8d4;strokeColor=#82b366;verticalAlign=top;fontSize=14;fontStyle=1;align=left" vertex="1" parent="1">
+          <mxGeometry x="320" y="360" width="280" height="180" as="geometry" />
+        </mxCell>
+
+        <mxCell id="benefit1" value="• Clean URLs (jenkins.local vs localhost:8080)" style="text;html=1;strokeColor=none;fillColor=none;align=left;verticalAlign=middle;whiteSpace=wrap;rounded=0;fontSize=11" vertex="1" parent="1">
+          <mxGeometry x="330" y="395" width="260" height="25" as="geometry" />
+        </mxCell>
+
+        <mxCell id="benefit2" value="• No need to keep terminal open for port-forward" style="text;html=1;strokeColor=none;fillColor=none;align=left;verticalAlign=middle;whiteSpace=wrap;rounded=0;fontSize=11" vertex="1" parent="1">
+          <mxGeometry x="330" y="425" width="260" height="25" as="geometry" />
+        </mxCell>
+
+        <mxCell id="benefit3" value="• Production-like setup (same as real environment)" style="text;html=1;strokeColor=none;fillColor=none;align=left;verticalAlign=middle;whiteSpace=wrap;rounded=0;fontSize=11" vertex="1" parent="1">
+          <mxGeometry x="330" y="455" width="260" height="25" as="geometry" />
+        </mxCell>
+
+        <mxCell id="benefit4" value="• SSL/TLS support ready" style="text;html=1;strokeColor=none;fillColor=none;align=left;verticalAlign=middle;whiteSpace=wrap;rounded=0;fontSize=11" vertex="1" parent="1">
+          <mxGeometry x="330" y="485" width="260" height="25" as="geometry" />
+        </mxCell>
+
+        <mxCell id="benefit5" value="• Path-based routing support" style="text;html=1;strokeColor=none;fillColor=none;align=left;verticalAlign=middle;whiteSpace=wrap;rounded=0;fontSize=11" vertex="1" parent="1">
+          <mxGeometry x="330" y="515" width="260" height="25" as="geometry" />
+        </mxCell>
+
+        <!-- Requirements -->
+        <mxCell id="requirements" value="⚠️ Requirements:" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#ffe6cc;strokeColor=#d79b00;verticalAlign=top;fontSize=14;fontStyle=1;align=left" vertex="1" parent="1">
+          <mxGeometry x="80" y="460" width="200" height="100" as="geometry" />
+        </mxCell>
+
+        <mxCell id="req1" value="• Edit /etc/hosts file" style="text;html=1;strokeColor=none;fillColor=none;align=left;verticalAlign=middle;whiteSpace=wrap;rounded=0;fontSize=11" vertex="1" parent="1">
+          <mxGeometry x="90" y="495" width="180" height="20" as="geometry" />
+        </mxCell>
+
+        <mxCell id="req2" value="• Install Ingress Controller" style="text;html=1;strokeColor=none;fillColor=none;align=left;verticalAlign=middle;whiteSpace=wrap;rounded=0;fontSize=11" vertex="1" parent="1">
+          <mxGeometry x="90" y="520" width="180" height="20" as="geometry" />
+        </mxCell>
+
+        <mxCell id="req3" value="• Create Ingress resources" style="text;html=1;strokeColor=none;fillColor=none;align=left;verticalAlign=middle;whiteSpace=wrap;rounded=0;fontSize=11" vertex="1" parent="1">
+          <mxGeometry x="90" y="545" width="180" height="20" as="geometry" />
+        </mxCell>
+
+      </root>
+    </mxGraphModel>
+  </diagram>
+</mxfile>

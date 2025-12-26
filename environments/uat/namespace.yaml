@@ -1,0 +1,42 @@
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: uat
+  labels:
+    environment: uat
+    managed-by: platform-team
+---
+apiVersion: v1
+kind: ResourceQuota
+metadata:
+  name: uat-resource-quota
+  namespace: uat
+spec:
+  hard:
+    requests.cpu: "40"
+    requests.memory: 80Gi
+    limits.cpu: "80"
+    limits.memory: 160Gi
+    persistentvolumeclaims: "20"
+    services.loadbalancers: "4"
+---
+apiVersion: v1
+kind: LimitRange
+metadata:
+  name: uat-limit-range
+  namespace: uat
+spec:
+  limits:
+  - max:
+      cpu: "8"
+      memory: 16Gi
+    min:
+      cpu: 100m
+      memory: 128Mi
+    default:
+      cpu: 1
+      memory: 1Gi
+    defaultRequest:
+      cpu: 500m
+      memory: 512Mi
+    type: Container

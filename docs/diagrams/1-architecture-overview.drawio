@@ -1,0 +1,219 @@
+<mxfile host="app.diagrams.net" modified="2024-01-01T00:00:00.000Z" agent="5.0" version="22.1.0" etag="drawio" type="device">
+  <diagram name="Architecture Overview" id="arch-overview">
+    <mxGraphModel dx="1434" dy="844" grid="1" gridSize="10" guides="1" tooltips="1" connect="1" arrows="1" fold="1" page="1" pageScale="1" pageWidth="1600" pageHeight="1200" math="0" shadow="0">
+      <root>
+        <mxCell id="0" />
+        <mxCell id="1" parent="0" />
+
+        <!-- Title -->
+        <mxCell id="title" value="Kubernetes On-Premise Platform Architecture" style="text;html=1;strokeColor=none;fillColor=none;align=center;verticalAlign=middle;whiteSpace=wrap;rounded=0;fontSize=24;fontStyle=1" vertex="1" parent="1">
+          <mxGeometry x="500" y="20" width="600" height="40" as="geometry" />
+        </mxCell>
+
+        <!-- Kubernetes Cluster Box -->
+        <mxCell id="k8s-cluster" value="Kubernetes Cluster (Docker Desktop / Minikube / Kind)" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#dae8fc;strokeColor=#6c8ebf;verticalAlign=top;fontSize=16;fontStyle=1;align=center;" vertex="1" parent="1">
+          <mxGeometry x="200" y="100" width="1200" height="1000" as="geometry" />
+        </mxCell>
+
+        <!-- Infrastructure Layer -->
+        <mxCell id="infra-layer" value="Infrastructure Layer" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#e1d5e7;strokeColor=#9673a6;verticalAlign=top;fontSize=14;fontStyle=1" vertex="1" parent="1">
+          <mxGeometry x="240" y="150" width="1120" height="200" as="geometry" />
+        </mxCell>
+
+        <!-- Ingress Controller -->
+        <mxCell id="ingress-controller" value="NGINX Ingress Controller&#xa;(Optional)&#xa;Port 80/443&#xa;LoadBalancer" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#fff2cc;strokeColor=#d6b656;fontSize=12" vertex="1" parent="1">
+          <mxGeometry x="280" y="200" width="200" height="120" as="geometry" />
+        </mxCell>
+
+        <!-- Storage -->
+        <mxCell id="storage" value="Storage Classes&#xa;&#xa;Local Path&#xa;PVC/PV" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#fff2cc;strokeColor=#d6b656;fontSize=12" vertex="1" parent="1">
+          <mxGeometry x="520" y="200" width="200" height="120" as="geometry" />
+        </mxCell>
+
+        <!-- RBAC -->
+        <mxCell id="rbac" value="RBAC&#xa;&#xa;Cluster Admin&#xa;Developer Role&#xa;Viewer Role" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#fff2cc;strokeColor=#d6b656;fontSize=12" vertex="1" parent="1">
+          <mxGeometry x="760" y="200" width="200" height="120" as="geometry" />
+        </mxCell>
+
+        <!-- Network Policies -->
+        <mxCell id="network-policies" value="Network Policies&#xa;&#xa;Namespace Isolation&#xa;Pod-to-Pod Rules" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#fff2cc;strokeColor=#d6b656;fontSize=12" vertex="1" parent="1">
+          <mxGeometry x="1000" y="200" width="200" height="120" as="geometry" />
+        </mxCell>
+
+        <!-- Namespaces Layer -->
+        <mxCell id="namespaces-layer" value="Application Namespaces" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#d5e8d4;strokeColor=#82b366;verticalAlign=top;fontSize=14;fontStyle=1" vertex="1" parent="1">
+          <mxGeometry x="240" y="380" width="1120" height="440" as="geometry" />
+        </mxCell>
+
+        <!-- Jenkins Namespace -->
+        <mxCell id="jenkins-ns" value="jenkins namespace" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#b1ddf0;strokeColor=#10739e;verticalAlign=top;fontSize=12;fontStyle=1" vertex="1" parent="1">
+          <mxGeometry x="280" y="420" width="240" height="360" as="geometry" />
+        </mxCell>
+
+        <mxCell id="jenkins-pod" value="Jenkins Master&#xa;Pod" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#ffffff;strokeColor=#10739e;fontSize=11" vertex="1" parent="1">
+          <mxGeometry x="300" y="470" width="200" height="60" as="geometry" />
+        </mxCell>
+
+        <mxCell id="jenkins-svc" value="jenkins&#xa;Service (ClusterIP)" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#ffffff;strokeColor=#10739e;fontSize=11" vertex="1" parent="1">
+          <mxGeometry x="300" y="550" width="200" height="60" as="geometry" />
+        </mxCell>
+
+        <mxCell id="jenkins-pvc" value="jenkins-pvc&#xa;PersistentVolumeClaim" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#ffffff;strokeColor=#10739e;fontSize=11" vertex="1" parent="1">
+          <mxGeometry x="300" y="630" width="200" height="60" as="geometry" />
+        </mxCell>
+
+        <mxCell id="jenkins-ingress" value="jenkins-ingress&#xa;jenkins.local" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#ffffff;strokeColor=#10739e;fontSize=11;dashed=1" vertex="1" parent="1">
+          <mxGeometry x="300" y="710" width="200" height="50" as="geometry" />
+        </mxCell>
+
+        <!-- ArgoCD Namespace -->
+        <mxCell id="argocd-ns" value="argocd namespace" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#fad9d5;strokeColor=#ae4132;verticalAlign=top;fontSize=12;fontStyle=1" vertex="1" parent="1">
+          <mxGeometry x="560" y="420" width="240" height="360" as="geometry" />
+        </mxCell>
+
+        <mxCell id="argocd-server" value="argocd-server&#xa;Pod" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#ffffff;strokeColor=#ae4132;fontSize=11" vertex="1" parent="1">
+          <mxGeometry x="580" y="470" width="200" height="60" as="geometry" />
+        </mxCell>
+
+        <mxCell id="argocd-svc" value="argocd-server&#xa;Service (ClusterIP)" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#ffffff;strokeColor=#ae4132;fontSize=11" vertex="1" parent="1">
+          <mxGeometry x="580" y="550" width="200" height="60" as="geometry" />
+        </mxCell>
+
+        <mxCell id="argocd-repo" value="argocd-repo-server&#xa;Pod" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#ffffff;strokeColor=#ae4132;fontSize=11" vertex="1" parent="1">
+          <mxGeometry x="580" y="630" width="200" height="60" as="geometry" />
+        </mxCell>
+
+        <mxCell id="argocd-ingress" value="argocd-ingress&#xa;argocd.local" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#ffffff;strokeColor=#ae4132;fontSize=11;dashed=1" vertex="1" parent="1">
+          <mxGeometry x="580" y="710" width="200" height="50" as="geometry" />
+        </mxCell>
+
+        <!-- Vault Namespace -->
+        <mxCell id="vault-ns" value="vault namespace" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#f8cecc;strokeColor=#b85450;verticalAlign=top;fontSize=12;fontStyle=1" vertex="1" parent="1">
+          <mxGeometry x="840" y="420" width="240" height="360" as="geometry" />
+        </mxCell>
+
+        <mxCell id="vault-pod" value="vault-0&#xa;Pod (StatefulSet)" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#ffffff;strokeColor=#b85450;fontSize=11" vertex="1" parent="1">
+          <mxGeometry x="860" y="470" width="200" height="60" as="geometry" />
+        </mxCell>
+
+        <mxCell id="vault-svc" value="vault&#xa;Service (ClusterIP)" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#ffffff;strokeColor=#b85450;fontSize=11" vertex="1" parent="1">
+          <mxGeometry x="860" y="550" width="200" height="60" as="geometry" />
+        </mxCell>
+
+        <mxCell id="vault-pvc" value="vault-pvc&#xa;PersistentVolumeClaim" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#ffffff;strokeColor=#b85450;fontSize=11" vertex="1" parent="1">
+          <mxGeometry x="860" y="630" width="200" height="60" as="geometry" />
+        </mxCell>
+
+        <mxCell id="vault-ingress" value="vault-ingress&#xa;vault.local" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#ffffff;strokeColor=#b85450;fontSize=11;dashed=1" vertex="1" parent="1">
+          <mxGeometry x="860" y="710" width="200" height="50" as="geometry" />
+        </mxCell>
+
+        <!-- Environment Namespace -->
+        <mxCell id="env-ns" value="dev / sit / uat / prod" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#d5e8d4;strokeColor=#82b366;verticalAlign=top;fontSize=12;fontStyle=1" vertex="1" parent="1">
+          <mxGeometry x="1120" y="420" width="200" height="360" as="geometry" />
+        </mxCell>
+
+        <mxCell id="app-pods" value="Application&#xa;Pods&#xa;(Deployed by ArgoCD)" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#ffffff;strokeColor=#82b366;fontSize=11" vertex="1" parent="1">
+          <mxGeometry x="1140" y="470" width="160" height="100" as="geometry" />
+        </mxCell>
+
+        <mxCell id="app-svc" value="Application&#xa;Services" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#ffffff;strokeColor=#82b366;fontSize=11" vertex="1" parent="1">
+          <mxGeometry x="1140" y="590" width="160" height="60" as="geometry" />
+        </mxCell>
+
+        <mxCell id="app-ingress" value="Application&#xa;Ingress" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#ffffff;strokeColor=#82b366;fontSize=11;dashed=1" vertex="1" parent="1">
+          <mxGeometry x="1140" y="670" width="160" height="60" as="geometry" />
+        </mxCell>
+
+        <!-- Monitoring Layer -->
+        <mxCell id="monitoring-layer" value="Observability Layer (Future)" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#ffe6cc;strokeColor=#d79b00;verticalAlign=top;fontSize=14;fontStyle=1;dashed=1" vertex="1" parent="1">
+          <mxGeometry x="240" y="850" width="1120" height="220" as="geometry" />
+        </mxCell>
+
+        <mxCell id="prometheus" value="Prometheus&#xa;(Metrics)" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#ffffff;strokeColor=#d79b00;fontSize=12;dashed=1" vertex="1" parent="1">
+          <mxGeometry x="300" y="910" width="200" height="120" as="geometry" />
+        </mxCell>
+
+        <mxCell id="grafana" value="Grafana&#xa;(Visualization)" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#ffffff;strokeColor=#d79b00;fontSize=12;dashed=1" vertex="1" parent="1">
+          <mxGeometry x="560" y="910" width="200" height="120" as="geometry" />
+        </mxCell>
+
+        <mxCell id="elk" value="ELK Stack&#xa;(Logging)" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#ffffff;strokeColor=#d79b00;fontSize=12;dashed=1" vertex="1" parent="1">
+          <mxGeometry x="820" y="910" width="200" height="120" as="geometry" />
+        </mxCell>
+
+        <mxCell id="jaeger" value="Jaeger&#xa;(Tracing)" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#ffffff;strokeColor=#d79b00;fontSize=12;dashed=1" vertex="1" parent="1">
+          <mxGeometry x="1080" y="910" width="200" height="120" as="geometry" />
+        </mxCell>
+
+        <!-- External Access -->
+        <mxCell id="user-browser" value="User&#xa;Browser" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#cdeb8b;strokeColor=#36393d;fontSize=12" vertex="1" parent="1">
+          <mxGeometry x="40" y="400" width="120" height="80" as="geometry" />
+        </mxCell>
+
+        <mxCell id="developer" value="Developer&#xa;kubectl/helm" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#cdeb8b;strokeColor=#36393d;fontSize=12" vertex="1" parent="1">
+          <mxGeometry x="40" y="600" width="120" height="80" as="geometry" />
+        </mxCell>
+
+        <!-- Connections -->
+        <mxCell id="conn1" value="HTTP/HTTPS" style="endArrow=classic;html=1;rounded=0;exitX=1;exitY=0.5;exitDx=0;exitDy=0;entryX=0;entryY=0.5;entryDx=0;entryDy=0;strokeWidth=2;strokeColor=#0066CC" edge="1" parent="1" source="user-browser" target="ingress-controller">
+          <mxGeometry width="50" height="50" relative="1" as="geometry">
+            <mxPoint x="700" y="600" as="sourcePoint" />
+            <mxPoint x="750" y="550" as="targetPoint" />
+          </mxGeometry>
+        </mxCell>
+
+        <mxCell id="conn2" value="kubectl/helm" style="endArrow=classic;html=1;rounded=0;exitX=1;exitY=0.5;exitDx=0;exitDy=0;strokeWidth=2;strokeColor=#009900;dashed=1" edge="1" parent="1" source="developer">
+          <mxGeometry width="50" height="50" relative="1" as="geometry">
+            <mxPoint x="700" y="800" as="sourcePoint" />
+            <mxPoint x="240" y="640" as="targetPoint" />
+          </mxGeometry>
+        </mxCell>
+
+        <!-- Ingress to Services -->
+        <mxCell id="conn-ing-jenkins" value="" style="endArrow=classic;html=1;rounded=0;exitX=0.5;exitY=1;exitDx=0;exitDy=0;entryX=0.5;entryY=0;entryDx=0;entryDy=0;strokeWidth=2;strokeColor=#0066CC;dashed=1" edge="1" parent="1" source="ingress-controller" target="jenkins-ingress">
+          <mxGeometry width="50" height="50" relative="1" as="geometry">
+            <mxPoint x="700" y="600" as="sourcePoint" />
+            <mxPoint x="750" y="550" as="targetPoint" />
+          </mxGeometry>
+        </mxCell>
+
+        <mxCell id="conn-ing-argocd" value="" style="endArrow=classic;html=1;rounded=0;exitX=0.5;exitY=1;exitDx=0;exitDy=0;entryX=0.5;entryY=0;entryDx=0;entryDy=0;strokeWidth=2;strokeColor=#0066CC;dashed=1" edge="1" parent="1" source="ingress-controller" target="argocd-ingress">
+          <mxGeometry width="50" height="50" relative="1" as="geometry">
+            <mxPoint x="700" y="600" as="sourcePoint" />
+            <mxPoint x="750" y="550" as="targetPoint" />
+          </mxGeometry>
+        </mxCell>
+
+        <mxCell id="conn-ing-vault" value="" style="endArrow=classic;html=1;rounded=0;exitX=0.5;exitY=1;exitDx=0;exitDy=0;entryX=0.5;entryY=0;entryDx=0;entryDy=0;strokeWidth=2;strokeColor=#0066CC;dashed=1" edge="1" parent="1" source="ingress-controller" target="vault-ingress">
+          <mxGeometry width="50" height="50" relative="1" as="geometry">
+            <mxPoint x="700" y="600" as="sourcePoint" />
+            <mxPoint x="750" y="550" as="targetPoint" />
+          </mxGeometry>
+        </mxCell>
+
+        <!-- Legend -->
+        <mxCell id="legend" value="Legend" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#f5f5f5;strokeColor=#666666;verticalAlign=top;fontSize=12;fontStyle=1" vertex="1" parent="1">
+          <mxGeometry x="40" y="850" width="120" height="180" as="geometry" />
+        </mxCell>
+
+        <mxCell id="legend-solid" value="Solid Line = Active" style="text;html=1;strokeColor=none;fillColor=none;align=left;verticalAlign=middle;whiteSpace=wrap;rounded=0;fontSize=10" vertex="1" parent="1">
+          <mxGeometry x="50" y="890" width="100" height="20" as="geometry" />
+        </mxCell>
+
+        <mxCell id="legend-dashed" value="Dashed = Optional" style="text;html=1;strokeColor=none;fillColor=none;align=left;verticalAlign=middle;whiteSpace=wrap;rounded=0;fontSize=10" vertex="1" parent="1">
+          <mxGeometry x="50" y="920" width="100" height="20" as="geometry" />
+        </mxCell>
+
+        <mxCell id="legend-box-dashed" value="Box Dashed = Future" style="text;html=1;strokeColor=none;fillColor=none;align=left;verticalAlign=middle;whiteSpace=wrap;rounded=0;fontSize=10" vertex="1" parent="1">
+          <mxGeometry x="50" y="950" width="100" height="20" as="geometry" />
+        </mxCell>
+
+        <mxCell id="legend-pvc" value="PVC → Storage" style="text;html=1;strokeColor=none;fillColor=none;align=left;verticalAlign=middle;whiteSpace=wrap;rounded=0;fontSize=10" vertex="1" parent="1">
+          <mxGeometry x="50" y="980" width="100" height="20" as="geometry" />
+        </mxCell>
+
+      </root>
+    </mxGraphModel>
+  </diagram>
+</mxfile>

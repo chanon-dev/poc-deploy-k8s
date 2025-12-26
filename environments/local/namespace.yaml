@@ -1,0 +1,47 @@
+# Local Development Namespace
+# ใช้สำหรับทดสอบบนเครื่อง local เท่านั้น
+
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: dev
+  labels:
+    environment: dev
+    type: local
+    managed-by: platform-team
+---
+apiVersion: v1
+kind: ResourceQuota
+metadata:
+  name: dev-resource-quota
+  namespace: dev
+spec:
+  hard:
+    # ลด quota สำหรับ local
+    requests.cpu: "4"       # ลดจาก 20
+    requests.memory: 8Gi    # ลดจาก 40Gi
+    limits.cpu: "8"         # ลดจาก 40
+    limits.memory: 16Gi     # ลดจาก 80Gi
+    persistentvolumeclaims: "5"   # ลดจาก 10
+    services.loadbalancers: "0"   # ไม่มี LB บน local
+---
+apiVersion: v1
+kind: LimitRange
+metadata:
+  name: dev-limit-range
+  namespace: dev
+spec:
+  limits:
+  - max:
+      cpu: "2"        # ลดจาก 4
+      memory: 4Gi     # ลดจาก 8Gi
+    min:
+      cpu: 50m        # ลดจาก 100m
+      memory: 64Mi    # ลดจาก 128Mi
+    default:
+      cpu: 250m       # ลดจาก 500m
+      memory: 256Mi   # ลดจาก 512Mi
+    defaultRequest:
+      cpu: 100m       # ลดจาก 200m
+      memory: 128Mi   # ลดจาก 256Mi
+    type: Container

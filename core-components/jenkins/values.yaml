@@ -1,0 +1,164 @@
+# Jenkins Helm Chart Values
+# Install: helm install jenkins jenkins/jenkins -f values.yaml -n jenkins
+
+controller:
+  # Jenkins master configuration
+  componentName: "jenkins-controller"
+  image: "jenkins/jenkins"
+  tag: "lts-jdk17"
+  imagePullPolicy: "Always"
+
+  # Resources
+  resources:
+    requests:
+      cpu: "1000m"
+      memory: "2Gi"
+    limits:
+      cpu: "2000m"
+      memory: "4Gi"
+
+  # High Availability - enable if you need HA
+  # replicaCount: 2
+
+  # JVM options
+  javaOpts: "-Xms2g -Xmx4g"
+
+  # Service configuration
+  serviceType: ClusterIP
+  servicePort: 8080
+
+  # Ingress configuration
+  ingress:
+    enabled: true
+    ingressClassName: nginx
+    annotations:
+      cert-manager.io/cluster-issuer: "letsencrypt-prod"
+      nginx.ingress.kubernetes.io/ssl-redirect: "true"
+    hostName: jenkins.company.local
+    tls:
+    - secretName: jenkins-tls
+      hosts:
+      - jenkins.company.local
+
+  # Admin credentials (change these!)
+  adminUser: "admin"
+  # adminPassword: "changeme"  # Or use existing secret
+
+  # Install plugins
+  installPlugins:
+    - kubernetes:latest
+    - workflow-aggregator:latest
+    - git:latest
+    - configuration-as-code:latest
+    - blueocean:latest
+    - credentials-binding:latest
+    - pipeline-stage-view:latest
+    - docker-workflow:latest
+    - hashicorp-vault-plugin:latest
+    - sonar:latest
+    - slack:latest
+
+  # Jenkins Configuration as Code (JCasC)
+  JCasC:
+    enabled: true
+    defaultConfig: true
+    configScripts:
+      welcome-message: |
+        jenkins:
+          systemMessage: "Welcome to On-Premise Jenkins Platform"
+      security: |
+        jenkins:
+          securityRealm:
+            local:
+              allowsSignup: false
+          authorizationStrategy:
+            roleBased:
+              roles:
+                global:
+                  - name: "admin"
+                    pattern: ".*"
+                    permissions:
+                      - "Overall/Administer"
+                  - name: "developer"
+                    pattern: ".*"
+                    permissions:
+                      - "Overall/Read"
+                      - "Job/Build"
+                      - "Job/Read"
+                      - "Job/Workspace"
+      kubernetes-cloud: |
+        jenkins:
+          clouds:
+            - kubernetes:
+                name: "kubernetes"
+                serverUrl: "https://kubernetes.default"
+                namespace: "jenkins"
+                jenkinsUrl: "http://jenkins:8080"
+                jenkinsTunnel: "jenkins-agent:50000"
+                containerCapStr: "100"
+                podLabels:
+                  - key: "jenkins"
+                    value: "agent"
+                templates:
+                  - name: "jenkins-agent"
+                    namespace: "jenkins"
+                    label: "jenkins-agent"
+                    nodeUsageMode: NORMAL
+                    containers:
+                      - name: "jnlp"
+                        image: "jenkins/inbound-agent:latest"
+                        workingDir: "/home/jenkins/agent"
+                        ttyEnabled: true
+                        resourceRequestCpu: "500m"
+                        resourceRequestMemory: "512Mi"
+                        resourceLimitCpu: "1000m"
+                        resourceLimitMemory: "1Gi"
+
+  # Persistent Volume
+  persistence:
+    enabled: true
+    existingClaim: ""
+    storageClass: ""  # Use default storage class
+    size: "50Gi"
+    accessMode: ReadWriteOnce
+
+# Agent configuration
+agent:
+  enabled: true
+  image: "jenkins/inbound-agent"
+  tag: "latest"
+  workingDir: "/home/jenkins/agent"
+
+  resources:
+    requests:
+      cpu: "500m"
+      memory: "512Mi"
+    limits:
+      cpu: "1000m"
+      memory: "1Gi"
+
+  # Pod retention
+  podRetention: "Never"
+  showRawYaml: true
+
+# Service Account
+serviceAccount:
+  create: true
+  name: "jenkins"
+  annotations: {}
+
+# RBAC
+rbac:
+  create: true
+  readSecrets: true  # Needed for credentials
+
+# Backup configuration (optional)
+backup:
+  enabled: false
+  schedule: "0 2 * * *"
+
+# Network Policy
+networkPolicy:
+  enabled: true
+  internalAgents:
+    allowed: true

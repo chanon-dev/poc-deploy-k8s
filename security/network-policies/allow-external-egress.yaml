@@ -1,0 +1,49 @@
+# Allow External Egress
+# For services that need to call external APIs or services
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-external-egress
+  namespace: dev
+spec:
+  podSelector:
+    matchLabels:
+      allow-external: "true"  # Only pods with this label can access external services
+  policyTypes:
+  - Egress
+  egress:
+  # Allow HTTPS traffic to external services
+  - to:
+    - ipBlock:
+        cidr: 0.0.0.0/0
+        except:
+        - 10.0.0.0/8      # Block private networks
+        - 172.16.0.0/12
+        - 192.168.0.0/16
+    ports:
+    - protocol: TCP
+      port: 443  # HTTPS
+    - protocol: TCP
+      port: 80   # HTTP
+---
+# Allow Registry Access for pulling images
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-registry-access
+  namespace: dev
+spec:
+  podSelector: {}
+  policyTypes:
+  - Egress
+  egress:
+  - to:
+    - namespaceSelector:
+        matchLabels:
+          kubernetes.io/metadata.name: harbor
+    ports:
+    - protocol: TCP
+      port: 443
+    - protocol: TCP
+      port: 5000

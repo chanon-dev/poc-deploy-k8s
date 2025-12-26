@@ -1,0 +1,188 @@
+// Example Jenkins Pipeline for Kubernetes Platform
+// This pipeline demonstrates the full CI/CD workflow
+
+pipeline {
+    agent {
+        kubernetes {
+            yaml '''
+apiVersion: v1
+kind: Pod
+metadata:
+  labels:
+    jenkins: agent
+spec:
+  serviceAccountName: jenkins
+  containers:
+  - name: maven
+    image: maven:3.8.6-openjdk-11
+    command: ['cat']
+    tty: true
+  - name: docker
+    image: docker:latest
+    command: ['cat']
+    tty: true
+    volumeMounts:
+    - name: docker-sock
+      mountPath: /var/run/docker.sock
+  - name: trivy
+    image: aquasec/trivy:latest
+    command: ['cat']
+    tty: true
+  - name: kubectl
+    image: bitnami/kubectl:latest
+    command: ['cat']
+    tty: true
+  volumes:
+  - name: docker-sock
+    hostPath:
+      path: /var/run/docker.sock
+'''
+        }
+    }
+
+    environment {
+        // Registry configuration
+        REGISTRY = 'harbor.company.local'
+        REGISTRY_CREDENTIALS = 'harbor-credentials'
+
+        // Application configuration
+        APP_NAME = 'myapp'
+        IMAGE_NAME = "${REGISTRY}/${APP_NAME}"
+
+        // Git configuration
+        GIT_COMMIT_SHORT = sh(returnStdout: true, script: 'git rev-parse --short HEAD').trim()
+        GIT_BRANCH = sh(returnStdout: true, script: 'git rev-parse --abbrev-ref HEAD').trim()
+
+        // Environment
+        ENV = "${GIT_BRANCH == 'main' ? 'prod' : (GIT_BRANCH == 'develop' ? 'sit' : 'dev')}"
+
+        // Vault
+        VAULT_ADDR = 'http://vault.vault.svc.cluster.local:8200'
+    }
+
+    stages {
+        stage('Checkout') {
+            steps {
+                echo "Checking out code..."
+                checkout scm
+                sh 'git log -1 --pretty=format:"%h - %an, %ar : %s"'
+            }
+        }
+
+        stage('Build & Test') {
+            steps {
+                container('maven') {
+                    echo "Building application..."
+                    sh '''
+                        mvn clean package
+                        mvn test
+                    '''
+                }
+            }
+        }
+
+        stage('Code Quality Analysis') {
+            when {
+                expression { env.BRANCH_NAME == 'main' || env.BRANCH_NAME == 'develop' }
+            }
+            steps {
+                echo "Running SonarQube analysis..."
+                container('maven') {
+                    withSonarQubeEnv('SonarQube') {
+                        sh 'mvn sonar:sonar'
+                    }
+                }
+            }
+        }
+
+        stage('Quality Gate') {
+            when {
+                expression { env.BRANCH_NAME == 'main' || env.BRANCH_NAME == 'develop' }
+            }
+            steps {
+                timeout(time: 5, unit: 'MINUTES') {
+                    waitForQualityGate abortPipeline: true
+                }
+            }
+        }
+
+        stage('Build Docker Image') {
+            steps {
+                container('docker') {
+                    echo "Building Docker image..."
+                    sh """
+                        docker build -t ${IMAGE_NAME}:${GIT_COMMIT_SHORT} .
+                        docker tag ${IMAGE_NAME}:${GIT_COMMIT_SHORT} ${IMAGE_NAME}:latest
+                    """
+                }
+            }
+        }
+
+        stage('Security Scan') {
+            steps {
+                container('trivy') {
+                    echo "Scanning image for vulnerabilities..."
+                    sh """
+                        trivy image --exit-code 0 --severity HIGH,CRITICAL ${IMAGE_NAME}:${GIT_COMMIT_SHORT}
+                    """
+                }
+            }
+        }
+
+        stage('Push to Registry') {
+            steps {
+                container('docker') {
+                    echo "Pushing image to registry..."
+                    withCredentials([usernamePassword(credentialsId: env.REGISTRY_CREDENTIALS, usernameVariable: 'USER', passwordVariable: 'PASS')]) {
+                        sh """
+                            echo \$PASS | docker login ${REGISTRY} -u \$USER --password-stdin
+                            docker push ${IMAGE_NAME}:${GIT_COMMIT_SHORT}
+                            docker push ${IMAGE_NAME}:latest
+                        """
+                    }
+                }
+            }
+        }
+
+        stage('Update Manifest') {
+            steps {
+                container('kubectl') {
+                    echo "Updating Kubernetes manifest..."
+                    withCredentials([gitUsernamePassword(credentialsId: 'git-credentials')]) {
+                        sh """
+                            git clone https://git.company.local/k8s-manifests.git
+                            cd k8s-manifests
+
+                            # Update image tag in deployment file
+                            sed -i 's|image: ${IMAGE_NAME}:.*|image: ${IMAGE_NAME}:${GIT_COMMIT_SHORT}|' ${ENV}/deployment.yaml
+
+                            # Commit and push
+                            git config user.name "Jenkins CI"
+                            git config user.email "jenkins@company.local"
+                            git add .
+                            git commit -m "Update ${APP_NAME} image to ${GIT_COMMIT_SHORT} [skip ci]"
+                            git push origin main
+                        """
+                    }
+                }
+            }
+        }
+    }
+
+    post {
+        success {
+            echo "✅ Pipeline succeeded!"
+            // Send notification to Slack
+            // slackSend(color: 'good', message: "Build succeeded: ${env.JOB_NAME} ${env.BUILD_NUMBER}")
+        }
+        failure {
+            echo "❌ Pipeline failed!"
+            // Send notification to Slack
+            // slackSend(color: 'danger', message: "Build failed: ${env.JOB_NAME} ${env.BUILD_NUMBER}")
+        }
+        always {
+            echo "Cleaning up..."
+            cleanWs()
+        }
+    }
+}

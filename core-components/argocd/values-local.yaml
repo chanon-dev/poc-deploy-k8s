@@ -1,0 +1,116 @@
+# Argo CD Helm Chart Values - LOCAL CONFIGURATION
+# สำหรับรันบนเครื่อง local
+#
+# ⚠️ NOTE: สำหรับ Local Development แนะนำให้ใช้ Official Manifest แทน
+#
+# Recommended Installation:
+#   kubectl apply -n argocd -f https://raw.githubusercontent.com/argoproj/argo-cd/stable/manifests/install.yaml
+#
+# ไฟล์นี้เป็น Alternative สำหรับผู้ที่ต้องการใช้ Helm (Advanced)
+# This file is an alternative for those who prefer using Helm (Advanced)
+
+global:
+  image:
+    repository: quay.io/argoproj/argocd
+    tag: v2.9.3
+
+## Argo CD Server
+server:
+  name: server
+  replicas: 1  # ลดจาก 2 (ไม่ต้องการ HA)
+
+  # ลด resources
+  resources:
+    requests:
+      cpu: 100m      # ลดจาก 250m
+      memory: 256Mi  # ลดจาก 512Mi
+    limits:
+      cpu: 250m      # ลดจาก 500m
+      memory: 512Mi  # ลดจาก 1Gi
+
+  service:
+    type: ClusterIP
+    servicePortHttp: 80
+    servicePortHttps: 443
+
+  # ปิด Ingress - ใช้ port-forward
+  ingress:
+    enabled: false
+
+  # Config
+  config:
+    url: http://localhost:8080  # Local URL
+
+  # ใช้ insecure mode (ไม่ต้องการ TLS บน local)
+  extraArgs:
+    - --insecure
+
+## Argo CD Application Controller
+controller:
+  name: application-controller
+  replicas: 1
+
+  # ลด resources
+  resources:
+    requests:
+      cpu: 250m      # ลดจาก 500m
+      memory: 512Mi  # ลดจาก 1Gi
+    limits:
+      cpu: 500m      # ลดจาก 1000m
+      memory: 1Gi    # ลดจาก 2Gi
+
+  metrics:
+    enabled: false  # ปิด metrics สำหรับ local
+
+## Argo CD Repo Server
+repoServer:
+  name: repo-server
+  replicas: 1  # ลดจาก 2
+
+  # ลด resources
+  resources:
+    requests:
+      cpu: 100m      # ลดจาก 250m
+      memory: 256Mi  # ลดจาก 512Mi
+    limits:
+      cpu: 250m      # ลดจาก 500m
+      memory: 512Mi  # ลดจาก 1Gi
+
+  metrics:
+    enabled: false
+
+## Redis
+redis:
+  enabled: true
+  name: redis
+
+  # ลด resources
+  resources:
+    requests:
+      cpu: 50m       # ลดจาก 100m
+      memory: 64Mi   # ลดจาก 128Mi
+    limits:
+      cpu: 100m      # ลดจาก 200m
+      memory: 128Mi  # ลดจาก 256Mi
+
+## Dex (SSO) - ปิดสำหรับ local
+dex:
+  enabled: false
+
+## Notifications - ปิดสำหรับ local
+notifications:
+  enabled: false
+
+## Configs
+configs:
+  secret:
+    createSecret: true
+
+# Service Account
+serviceAccount:
+  create: true
+  name: argocd-server
+
+# RBAC
+rbac:
+  create: true

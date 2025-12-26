@@ -1,0 +1,33 @@
+# Argo CD Ingress - SSL Termination at Ingress (Method 2)
+# NGINX terminates SSL, sends HTTP to Argo CD
+# Argo CD runs in insecure mode (server.insecure: "true")
+
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: argocd-server-ingress
+  namespace: argocd
+  annotations:
+    # Backend uses HTTP (Argo CD in insecure mode)
+    nginx.ingress.kubernetes.io/backend-protocol: "HTTP"
+    # Force redirect HTTP to HTTPS
+    nginx.ingress.kubernetes.io/ssl-redirect: "true"
+    # Force HTTPS
+    nginx.ingress.kubernetes.io/force-ssl-redirect: "true"
+spec:
+  ingressClassName: nginx
+  tls:
+  - hosts:
+    - argocd.local
+    secretName: argocd-tls-secret  # TLS certificate
+  rules:
+  - host: argocd.local
+    http:
+      paths:
+      - path: /
+        pathType: Prefix
+        backend:
+          service:
+            name: argocd-server
+            port:
+              number: 80  # HTTP port (insecure mode)

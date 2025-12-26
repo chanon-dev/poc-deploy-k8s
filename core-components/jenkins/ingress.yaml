@@ -1,0 +1,72 @@
+# Jenkins Ingress Configuration
+# For local development with NGINX Ingress Controller
+
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: jenkins-ingress
+  namespace: jenkins
+  annotations:
+    # NGINX Ingress specific annotations
+    nginx.ingress.kubernetes.io/rewrite-target: /
+    nginx.ingress.kubernetes.io/ssl-redirect: "false"
+    # Increase timeout for Jenkins (large uploads, long-running builds)
+    nginx.ingress.kubernetes.io/proxy-body-size: "50m"
+    nginx.ingress.kubernetes.io/proxy-connect-timeout: "300"
+    nginx.ingress.kubernetes.io/proxy-read-timeout: "300"
+    nginx.ingress.kubernetes.io/proxy-send-timeout: "300"
+spec:
+  ingressClassName: nginx
+  rules:
+  - host: jenkins.local
+    http:
+      paths:
+      - path: /
+        pathType: Prefix
+        backend:
+          service:
+            name: jenkins
+            port:
+              number: 8080
+---
+# Optional: HTTPS configuration with self-signed certificate
+# Uncomment if you want HTTPS support
+
+# apiVersion: v1
+# kind: Secret
+# metadata:
+#   name: jenkins-tls
+#   namespace: jenkins
+# type: kubernetes.io/tls
+# data:
+#   # Generate with:
+#   # openssl req -x509 -nodes -days 365 -newkey rsa:2048 \
+#   #   -keyout tls.key -out tls.crt -subj "/CN=jenkins.local"
+#   # kubectl create secret tls jenkins-tls --cert=tls.crt --key=tls.key -n jenkins
+#   tls.crt: <base64-encoded-cert>
+#   tls.key: <base64-encoded-key>
+# ---
+# apiVersion: networking.k8s.io/v1
+# kind: Ingress
+# metadata:
+#   name: jenkins-ingress-https
+#   namespace: jenkins
+#   annotations:
+#     nginx.ingress.kubernetes.io/ssl-redirect: "true"
+# spec:
+#   ingressClassName: nginx
+#   tls:
+#   - hosts:
+#     - jenkins.local
+#     secretName: jenkins-tls
+#   rules:
+#   - host: jenkins.local
+#     http:
+#       paths:
+#       - path: /
+#         pathType: Prefix
+#         backend:
+#           service:
+#             name: jenkins
+#             port:
+#               number: 8080

@@ -1,0 +1,16 @@
+# Argo CD Command Parameters ConfigMap
+# ใช้สำหรับตั้งค่า server.insecure เพื่อทำงานกับ Ingress
+# Apply this BEFORE installing Argo CD or AFTER to avoid manual patching
+
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: argocd-cmd-params-cm
+  namespace: argocd
+  labels:
+    app.kubernetes.io/name: argocd-cmd-params-cm
+    app.kubernetes.io/part-of: argocd
+data:
+  # Run server without TLS (required for Ingress with HTTP backend)
+  # รัน server แบบไม่มี TLS (จำเป็นสำหรับ Ingress ที่ใช้ HTTP backend)
+  server.insecure: "true"

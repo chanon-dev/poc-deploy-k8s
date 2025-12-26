@@ -1,0 +1,59 @@
+# NamespaceAdmin - Tech Leads
+# Full access within their specific namespace
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: namespace-admin
+  namespace: dev  # Duplicate this for sit, uat, prod
+  labels:
+    rbac-role: namespace-admin
+rules:
+- apiGroups: ["*"]
+  resources: ["*"]
+  verbs: ["*"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: tech-lead-dev-admin
+  namespace: dev
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: Role
+  name: namespace-admin
+subjects:
+- kind: Group
+  name: tech-leads-dev
+  apiGroup: rbac.authorization.k8s.io
+# - kind: User
+#   name: techlead-dev@company.com
+#   apiGroup: rbac.authorization.k8s.io
+---
+# Additional namespace-level permissions for viewing across namespaces
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: namespace-admin-viewer
+  labels:
+    rbac-role: namespace-admin-viewer
+rules:
+- apiGroups: [""]
+  resources: ["namespaces"]
+  verbs: ["get", "list", "watch"]
+- apiGroups: [""]
+  resources: ["nodes"]
+  verbs: ["get", "list", "watch"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: tech-leads-cluster-viewer
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: namespace-admin-viewer
+subjects:
+- kind: Group
+  name: tech-leads
+  apiGroup: rbac.authorization.k8s.io

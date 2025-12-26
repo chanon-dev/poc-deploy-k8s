@@ -1,0 +1,14 @@
+# Argo CD Installation
+# This file contains instructions to install Argo CD
+
+# Installation method 1: Using official manifest
+# kubectl create namespace argocd
+# kubectl apply -n argocd -f https://raw.githubusercontent.com/argoproj/argo-cd/stable/manifests/install.yaml
+
+# Installation method 2: Using Helm (Recommended for customization)
+# See values.yaml for Helm installation
+
+# Installation method 3: Using kubectl with this manifest
+# Download the latest stable manifest first:
+# curl -o argocd-install.yaml https://raw.githubusercontent.com/argoproj/argo-cd/stable/manifests/install.yaml
+# kubectl apply -n argocd -f argocd-install.yaml
