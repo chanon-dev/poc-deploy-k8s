@@ -1,4 +1,5 @@
 # On-Premise Kubernetes Platform System
+
 ## แพลตฟอร์ม Kubernetes แบบ On-Premise
 
 [![Kubernetes](https://img.shields.io/badge/Kubernetes-326CE5?style=for-the-badge&logo=kubernetes&logoColor=white)](https://kubernetes.io/)
@@ -160,47 +161,55 @@ kubectl port-forward -n vault svc/vault 8200:8200
 ## Components / ส่วนประกอบ
 
 ### 1. **Namespaces & Resource Quotas** / Namespaces และ Resource Quotas
+
 - Isolated environments for dev, sit, uat, prod
 - Resource limits per namespace
 - **Location:** `environments/*/namespace.yaml`
 
 ### 2. **RBAC (Role-Based Access Control)** / การควบคุมสิทธิ์
+
 - ClusterAdmin - Platform team
 - NamespaceAdmin - Tech leads
 - Developer - Limited access
 - **Location:** `security/rbac/`
 
 ### 3. **Network Policies** / Network Policies
+
 - Zero Trust network architecture
 - Default deny all traffic
 - Allow-list specific connections
 - **Location:** `security/network-policies/`
 
 ### 4. **Jenkins (CI)** / Jenkins สำหรับ CI
+
 - Kubernetes-native dynamic agents
 - Pipeline as Code
 - Integration with Vault & SonarQube
 - **Location:** `core-components/jenkins/`
 
 ### 5. **Argo CD (CD)** / Argo CD สำหรับ CD
+
 - GitOps continuous deployment
 - Auto-sync for dev/sit
 - Manual approval for uat/prod
 - **Location:** `core-components/argocd/`
 
 ### 6. **HashiCorp Vault** / Vault สำหรับ Secrets
+
 - Centralized secrets management
 - Kubernetes auth integration
 - Automatic secret injection
 - **Location:** `core-components/vault/`
 
 ### 7. **Harbor (Container Registry)** / Harbor สำหรับเก็บ Container Images
+
 - Private container registry
 - Vulnerability scanning
 - Image signing
 - **Location:** `core-components/harbor/`
 
 ### 8. **Prometheus & Grafana** / Monitoring
+
 - Metrics collection
 - Dashboards
 - Alerting
@@ -298,6 +307,7 @@ kubectl get networkpolicies -A
 ### Phase 3: Core Components
 
 #### Install Jenkins
+
 ```bash
 cd core-components/jenkins
 helm repo add jenkins https://charts.jenkins.io
@@ -305,6 +315,7 @@ helm install jenkins jenkins/jenkins -f values.yaml -n jenkins --create-namespac
 ```
 
 #### Install Argo CD
+
 ```bash
 cd core-components/argocd
 helm repo add argo https://argoproj.github.io/argo-helm
@@ -312,6 +323,7 @@ helm install argocd argo/argo-cd -f values.yaml -n argocd --create-namespace
 ```
 
 #### Install Vault
+
 ```bash
 cd core-components/vault
 helm repo add hashicorp https://helm.releases.hashicorp.com
@@ -324,6 +336,7 @@ chmod +x init-unseal.sh configure-vault.sh
 ```
 
 See detailed instructions in each component's README:
+
 - [Jenkins README](core-components/jenkins/README.md)
 - [Argo CD README](core-components/argocd/README.md)
 - [Vault README](core-components/vault/README.md)
@@ -409,6 +422,7 @@ See: `ci-cd/argocd-apps/application-example.yaml`
 ### Common Issues / ปัญหาที่พบบ่อย
 
 #### 1. Pods can't pull images
+
 ```bash
 # Check image pull secrets
 kubectl get secret -n <namespace>
@@ -418,6 +432,7 @@ kubectl run test --image=busybox -it --rm -- wget -O- http://harbor.harbor.svc.c
 ```
 
 #### 2. Pods can't access other services
+
 ```bash
 # Check Network Policies
 kubectl get networkpolicy -n <namespace>
@@ -427,6 +442,7 @@ kubectl run test -n <namespace> --image=busybox -it --rm -- wget -O- http://serv
 ```
 
 #### 3. Secrets not injected from Vault
+
 ```bash
 # Check Vault is unsealed
 kubectl exec -n vault vault-0 -- vault status
@@ -439,6 +455,7 @@ kubectl logs -n vault -l app.kubernetes.io/name=vault-agent-injector
 ```
 
 #### 4. Jenkins can't spawn agents
+
 ```bash
 # Check RBAC
 kubectl get rolebinding -n jenkins
@@ -513,29 +530,9 @@ kubectl logs -n jenkins -l app.kubernetes.io/component=jenkins-controller
 - **Tasks** - [Implementation Tasks](docs/implementation_tasks.md)
 
 ### External Resources
+
 - [Kubernetes Documentation](https://kubernetes.io/docs/)
 - [Jenkins Documentation](https://www.jenkins.io/doc/)
 - [Argo CD Documentation](https://argo-cd.readthedocs.io/)
 - [Vault Documentation](https://www.vaultproject.io/docs)
 - [GitOps Principles](https://opengitops.dev/)
-
----
-
-## License / ใบอนุญาต
-
-This project is licensed under the MIT License.
-
----
-
-## Support / การสนับสนุน
-
-For issues and questions / สำหรับปัญหาและคำถาม:
-- Create an issue in this repository
-- Contact the platform team
-- Email: platform-team@company.local
-
----
-
-**Built with ❤️ by Platform Engineering Team**
-
-**สร้างด้วย ❤️ โดยทีม Platform Engineering**
