@@ -447,7 +447,7 @@ sudo nano /etc/hosts
 **คำอธิบาย:**
 
 - เพิ่ม DNS mapping สำหรับ local hostnames
-- ทำให้เข้าถึง services ผ่าน <http://jenkins.local> แทน <http://localhost:8080>
+- ทำให้เข้าถึง services ผ่าน [http://jenkins.local](http://jenkins.local) แทน [http://localhost:8080](http://localhost:8080)
 
 **ตรวจสอบ:**
 
@@ -680,7 +680,7 @@ kubectl apply -f core-components/argocd/ingress.yaml
 
 - Apply Ingress resource สำหรับ Argo CD
 - ใช้ SSL Termination at Ingress (Method 2) - แนะนำ
-- Argo CD จะสามารถเข้าถึงผ่าน <https://argocd.local>
+- Argo CD จะสามารถเข้าถึงผ่าน [https://argocd.local](https://argocd.local)
 
 **ตรวจสอบ Ingress:**
 
@@ -812,7 +812,147 @@ kubectl get ingress -n vault
 
 ---
 
-## Step 10: Access Services / เข้าถึง Services
+## Step 10: Install Harbor / ติดตั้ง Harbor (Container Registry)
+
+### 10.1 Add Helm Repository
+
+```bash
+# เพิ่ม Harbor helm repo
+helm repo add harbor https://helm.goharbor.io
+
+# Update repo
+helm repo update
+
+# ค้นหา chart
+helm search repo harbor/harbor
+```
+
+**คำอธิบาย:** เพิ่ม Harbor Helm repository สำหรับติดตั้ง Container Registry
+
+### 10.2 Review Configuration
+
+```bash
+# ดูไฟล์ config สำหรับ local
+cat core-components/harbor/values-local.yaml
+
+# สังเกต:
+# - externalURL: http://harbor.local
+# - TLS disabled (HTTP only สำหรับ local)
+# - Admin password: HarborAdmin123
+# - Storage: 10Gi registry, 2Gi database
+# - Resources ลดลง (256Mi-512Mi RAM)
+# - Trivy enabled (vulnerability scanning)
+# - Notary disabled (image signing ปิดสำหรับ local)
+```
+
+### 10.3 Install Harbor Chart
+
+```bash
+# Install Harbor (ใช้เวลา 5-10 นาที)
+helm install harbor harbor/harbor \
+  -f core-components/harbor/values-local.yaml \
+  -n harbor \
+  --create-namespace \
+  --wait \
+  --timeout 15m
+```
+
+**คำอธิบาย:** ติดตั้ง Harbor container registry
+
+**สิ่งที่เกิดขึ้น:**
+
+1. สร้าง Deployment สำหรับ Harbor Core (API + logic)
+2. สร้าง Deployment สำหรับ Harbor Portal (Web UI)
+3. สร้าง Deployment สำหรับ Harbor Registry (Docker registry)
+4. สร้าง Deployment สำหรับ Harbor JobService (background jobs)
+5. สร้าง StatefulSet สำหรับ PostgreSQL database
+6. สร้าง Deployment สำหรับ Redis cache
+7. สร้าง Deployment สำหรับ Trivy scanner
+8. สร้าง PVC สำหรับ registry data, database, และ cache
+9. **สร้าง Ingress (ถ้าติดตั้ง Ingress Controller)** สำหรับเข้าถึงผ่าน harbor.local
+
+**หมายเหตุ:**
+
+- Harbor ต้องการ resources พอสมควร (~3Gi RAM, ~1.5 CPU cores)
+- การติดตั้งใช้เวลาประมาณ 5-10 นาที
+- รอให้ทุก pod เป็น Running ก่อนใช้งาน
+
+### 10.4 ตรวจสอบ Harbor
+
+```bash
+# ดู pods (รอจนทุก pod เป็น Running)
+kubectl get pods -n harbor
+
+# ควรเห็น:
+# harbor-core-xxx                1/1   Running
+# harbor-database-0              1/1   Running
+# harbor-jobservice-xxx          1/1   Running
+# harbor-portal-xxx              1/1   Running
+# harbor-redis-0                 1/1   Running
+# harbor-registry-xxx            1/1   Running
+# harbor-trivy-xxx               1/1   Running
+
+# ดู services
+kubectl get svc -n harbor
+
+# ดู ingress (ถ้าติดตั้ง Ingress Controller)
+kubectl get ingress -n harbor
+
+# ดู PVCs
+kubectl get pvc -n harbor
+```
+
+### 10.5 Update /etc/hosts (ถ้าใช้ Ingress)
+
+```bash
+# เพิ่ม harbor.local
+sudo sh -c 'echo "127.0.0.1 harbor.local" >> /etc/hosts'
+
+# ตรวจสอบ
+cat /etc/hosts | grep harbor
+```
+
+### 10.6 Test Harbor Access
+
+```bash
+# Test Harbor API
+curl -I http://harbor.local/api/v2.0/ping
+
+# ควรได้: HTTP/1.1 200 OK
+
+# หรือเปิด browser
+open http://harbor.local
+```
+
+### 10.7 Login to Harbor
+
+**Via Web UI:**
+
+1. เปิด browser: <http://harbor.local>
+2. Login credentials:
+   - **Username:** admin
+   - **Password:** HarborAdmin123
+
+**Via Docker CLI:**
+
+```bash
+# Docker login
+docker login harbor.local
+
+# Enter credentials when prompted
+# Username: admin
+# Password: HarborAdmin123
+```
+
+**คำแนะนำ:**
+
+- เปลี่ยน admin password ทันทีหลังจาก login ครั้งแรก
+- สร้าง project สำหรับเก็บ images (เช่น "myapp")
+- ทดสอบ push/pull image เพื่อยืนยันว่าทำงานได้
+
+---
+
+## Step 11: Access Services / เข้าถึง Services
 
 เลือกวิธีการเข้าถึง services ตาม option ที่เลือกใน Step 6:
 
@@ -835,13 +975,15 @@ open http://jenkins.local
 open https://argocd.local
 # หรือ: open http://argocd-http.local
 open http://vault.local
+open http://harbor.local
 ```
 
 **URLs:**
 
-- **Jenkins:**  <http://jenkins.local>
-- **Argo CD:** <https://argocd.local> (หรือ <http://argocd-http.local> สำหรับ HTTP)
-- **Vault:**   <http://vault.local>
+- **Jenkins:**  [http://jenkins.local](http://jenkins.local)
+- **Argo CD:** [https://argocd.local](https://argocd.local) (หรือ [http://argocd-http.local](http://argocd-http.local) สำหรับ HTTP)
+- **Vault:**   [http://vault.local](http://vault.local)
+- **Harbor:**  [http://harbor.local](http://harbor.local)
 
 **หมายเหตุ:**
 
@@ -857,7 +999,7 @@ open http://vault.local
 - ✅ ง่ายกว่า ไม่ต้อง setup Ingress
 - ✅ เหมาะสำหรับ daily development
 
-เปิด **Terminal ใหม่ 3 หน้าต่าง** แล้วรันคำสั่งเหล่านี้:
+เปิด **Terminal ใหม่ 4 หน้าต่าง** แล้วรันคำสั่งเหล่านี้:
 
 #### Terminal 1 - Jenkins
 
@@ -868,7 +1010,7 @@ kubectl port-forward -n jenkins svc/jenkins 8080:8080
 # เว้นไว้ (ไม่ต้องกด Ctrl+C)
 ```
 
-**เข้าถึง:** <http://localhost:8080>
+**เข้าถึง:** [http://localhost:8080](http://localhost:8080)
 
 #### Terminal 2 - Argo CD
 
@@ -879,7 +1021,7 @@ kubectl port-forward -n argocd svc/argocd-server 8443:443
 # เว้นไว้
 ```
 
-**เข้าถึง:** <https://localhost:8443>
+**เข้าถึง:** [https://localhost:8443](https://localhost:8443)
 
 #### Terminal 3 - Vault
 
@@ -890,11 +1032,22 @@ kubectl port-forward -n vault svc/vault 8200:8200
 # เว้นไว้
 ```
 
-**เข้าถึง:** <http://localhost:8200>
+**เข้าถึง:** [http://localhost:8200](http://localhost:8200)
+
+#### Terminal 4 - Harbor
+
+```bash
+# Port forward Harbor
+kubectl port-forward -n harbor svc/harbor-portal 8888:80
+
+# เว้นไว้
+```
+
+**เข้าถึง:** [http://localhost:8888](http://localhost:8888)
 
 ---
 
-### 10.3 Login Credentials Summary
+### 13.3 Login Credentials Summary
 
 #### Jenkins
 
@@ -903,8 +1056,8 @@ kubectl port-forward -n vault svc/vault 8200:8200
 
 **URLs:**
 
-- Ingress: <http://jenkins.local>
-- Port-forward: <http://localhost:8080>
+- Ingress: [http://jenkins.local](http://jenkins.local)
+- Port-forward: [http://localhost:8080](http://localhost:8080)
 
 #### Argo CD
 
@@ -913,25 +1066,37 @@ kubectl port-forward -n vault svc/vault 8200:8200
 
 **URLs:**
 
-- Ingress: <https://argocd.local> (หรือ <http://argocd-http.local>)
-- Port-forward: <https://localhost:8443>
+- Ingress: [https://argocd.local](https://argocd.local) (หรือ [http://argocd-http.local](http://argocd-http.local))
+- Port-forward: [https://localhost:8443](https://localhost:8443)
 
 **Note:** ใช้ "Advanced" → "Proceed" ถ้า browser แจ้ง SSL warning
 
 #### Vault
 
-- **Token:** (จะได้จาก Step 11 หลัง initialize)
+- **Token:** (จะได้จาก Step 12 หลัง initialize)
 
 **URLs:**
 
-- Ingress: <http://vault.local>
-- Port-forward: <http://localhost:8200>
+- Ingress: [http://vault.local](http://vault.local)
+- Port-forward: [http://localhost:8200](http://localhost:8200)
+
+#### Harbor
+
+- **Username:** `admin`
+- **Password:** `HarborAdmin123` (จาก Step 10.7)
+
+**URLs:**
+
+- Ingress: [http://harbor.local](http://harbor.local)
+- Port-forward: [http://localhost:8888](http://localhost:8888)
+
+**Note:** เปลี่ยน password ทันทีหลัง login ครั้งแรก!
 
 ---
 
-## Step 11: Initialize Vault / เริ่มต้น Vault
+## Step 12: Initialize Vault / เริ่มต้น Vault
 
-### 11.1 Initialize Vault
+### 13.1 Initialize Vault
 
 ```bash
 # Initialize Vault (ได้ unseal keys และ root token)
@@ -955,7 +1120,7 @@ cat vault-keys.json
 - **อย่า commit เข้า git!**
 - ถ้าหาย = เข้า Vault ไม่ได้
 
-### 11.2 Extract Keys and Token
+### 13.2 Extract Keys and Token
 
 ```bash
 # Extract unseal keys
@@ -973,7 +1138,7 @@ echo "Unseal Key 2: $UNSEAL_KEY_2"
 echo "Unseal Key 3: $UNSEAL_KEY_3"
 ```
 
-### 11.3 Unseal Vault
+### 13.3 Unseal Vault
 
 ```bash
 # Unseal ครั้งที่ 1
@@ -988,7 +1153,7 @@ kubectl exec -n vault vault-0 -- vault operator unseal $UNSEAL_KEY_3
 
 **คำอธิบาย:** ต้อง unseal ด้วย 3 keys จึงจะใช้งาน Vault ได้
 
-### 11.4 ตรวจสอบ Vault Status
+### 13.4 ตรวจสอบ Vault Status
 
 ```bash
 # Check status
@@ -1005,7 +1170,7 @@ kubectl get pods -n vault
 # vault-0   1/1   Running
 ```
 
-### 11.5 Login to Vault
+### 13.5 Login to Vault
 
 ```bash
 # Login with root token
@@ -1018,7 +1183,7 @@ kubectl exec -n vault vault-0 -- vault login $ROOT_TOKEN
 # Token: <ROOT_TOKEN>
 ```
 
-### 11.6 Configure Vault
+### 13.6 Configure Vault
 
 ```bash
 # Enable Kubernetes auth
@@ -1047,9 +1212,9 @@ kubectl exec -n vault vault-0 -- vault kv put secret/dev/test password=hello123
 
 ---
 
-## Step 12: Verify Installation / ตรวจสอบการติดตั้ง
+## Step 13: Verify Installation / ตรวจสอบการติดตั้ง
 
-### 12.1 Check All Pods
+### 13.1 Check All Pods
 
 ```bash
 # ดู pods ทั้งหมด
@@ -1059,6 +1224,7 @@ kubectl get pods -A
 kubectl get pods -n jenkins
 kubectl get pods -n argocd
 kubectl get pods -n vault
+kubectl get pods -n harbor
 kubectl get pods -n dev
 ```
 
@@ -1073,21 +1239,28 @@ argocd      argocd-repo-server-xxx                  1/1     Running
 argocd      argocd-redis-xxx                        1/1     Running
 vault       vault-0                                 1/1     Running
 vault       vault-agent-injector-xxx                1/1     Running
+harbor      harbor-core-xxx                         1/1     Running
+harbor      harbor-portal-xxx                       1/1     Running
+harbor      harbor-registry-xxx                     1/1     Running
+harbor      harbor-database-0                       1/1     Running
+harbor      harbor-redis-0                          1/1     Running
+harbor      harbor-jobservice-xxx                   1/1     Running
+harbor      harbor-trivy-xxx                        1/1     Running
 ```
 
 **หมายเหตุ:** ถ้าติดตั้ง Ingress Controller จะเห็น ingress-nginx pods ด้วย
 
-### 12.2 Check All Services
+### 13.2 Check All Services
 
 ```bash
 # ดู services
-kubectl get svc -A | grep -E "jenkins|argocd|vault"
+kubectl get svc -A | grep -E "jenkins|argocd|vault|harbor"
 
 # ดู ingress (ถ้าติดตั้ง Ingress Controller)
 kubectl get ingress -A
 ```
 
-### 12.3 Check Storage
+### 13.3 Check Storage
 
 ```bash
 # ดู PVCs
@@ -1097,9 +1270,13 @@ kubectl get pvc -A
 # jenkins   jenkins-pvc      Bound   10Gi
 # vault     data-vault-0     Bound   5Gi
 # vault     audit-vault-0    Bound   5Gi
+# harbor    database-data-harbor-database-0    Bound   2Gi
+# harbor    redis-data-harbor-redis-0          Bound   1Gi
+# harbor    harbor-jobservice                  Bound   1Gi
+# harbor    harbor-registry                    Bound   10Gi
 ```
 
-### 12.4 Test Jenkins
+### 13.4 Test Jenkins
 
 ```bash
 # Test Jenkins API (เลือกตาม setup)
@@ -1112,7 +1289,7 @@ curl -s http://localhost:8080/api/json | jq '.mode'
 # ควรได้: "NORMAL"
 ```
 
-### 12.5 Test Argo CD
+### 13.5 Test Argo CD
 
 ```bash
 # Install argocd CLI (optional)
@@ -1135,7 +1312,7 @@ argocd login localhost:8443 \
 argocd app list
 ```
 
-### 12.6 Test Vault
+### 13.6 Test Vault
 
 ```bash
 # Read test secret
@@ -1145,7 +1322,25 @@ kubectl exec -n vault vault-0 -- \
 # ควรเห็น password=hello123
 ```
 
-### 12.7 Test Deployment in Dev
+### 13.7 Test Harbor
+
+```bash
+# Test Harbor API (เลือกตาม setup)
+# Via Ingress:
+curl -s http://harbor.local/api/v2.0/ping
+
+# Via Port-forward:
+curl -s http://localhost:8888/api/v2.0/ping
+
+# ควรได้: "Pong"
+
+# Test Docker login
+docker login harbor.local
+# Username: admin
+# Password: HarborAdmin123
+```
+
+### 13.8 Test Deployment in Dev
 
 ```bash
 # Deploy nginx ทดสอบ
@@ -1160,13 +1355,13 @@ kubectl delete deployment nginx -n dev
 
 ---
 
-## Step 13: Next Steps / ขั้นตอนถัดไป
+## Step 14: Next Steps / ขั้นตอนถัดไป
 
 ### 13.1 สร้าง Simple Pipeline ใน Jenkins
 
 1. เปิด Jenkins:
-   - Via Ingress: <http://jenkins.local>
-   - Via Port-forward: <http://localhost:8080>
+   - Via Ingress: [http://jenkins.local](http://jenkins.local)
+   - Via Port-forward: [http://localhost:8080](http://localhost:8080)
 2. New Item → Pipeline
 3. ใส่ script:
 

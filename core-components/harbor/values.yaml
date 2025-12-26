@@ -1,0 +1,234 @@
+# Harbor Helm Chart Values - PRODUCTION CONFIGURATION
+# สำหรับ production/staging environments
+#
+# Harbor Version: 1.13.x or later
+# Helm Chart: https://github.com/goharbor/harbor-helm
+
+# External URL configuration
+# IMPORTANT: Change to your actual domain
+externalURL: https://harbor.company.local
+
+# Expose service via Ingress with TLS
+expose:
+  type: ingress
+  tls:
+    enabled: true
+    certSource: secret  # or 'auto' for cert-manager
+    secret:
+      secretName: "harbor-tls"
+      notarySecretName: "notary-tls"
+  ingress:
+    className: nginx
+    hosts:
+      core: harbor.company.local
+      notary: notary.company.local
+    annotations:
+      nginx.ingress.kubernetes.io/ssl-redirect: "true"
+      nginx.ingress.kubernetes.io/proxy-body-size: "0"
+      nginx.ingress.kubernetes.io/proxy-request-buffering: "off"
+      # Uncomment if using cert-manager
+      # cert-manager.io/cluster-issuer: "letsencrypt-prod"
+
+# Persistence configuration
+persistence:
+  enabled: true
+  resourcePolicy: "keep"
+
+  persistentVolumeClaim:
+    registry:
+      storageClass: "fast-ssd"  # Use fast storage class
+      size: 200Gi
+      accessMode: ReadWriteOnce
+
+    jobservice:
+      storageClass: "fast-ssd"
+      size: 5Gi
+      accessMode: ReadWriteOnce
+
+    database:
+      storageClass: "fast-ssd"
+      size: 20Gi
+      accessMode: ReadWriteOnce
+
+    redis:
+      storageClass: "fast-ssd"
+      size: 5Gi
+      accessMode: ReadWriteOnce
+
+    trivy:
+      storageClass: "fast-ssd"
+      size: 10Gi
+      accessMode: ReadWriteOnce
+
+# High Availability configuration
+core:
+  replicas: 2  # HA mode
+  resources:
+    requests:
+      memory: 1Gi
+      cpu: 500m
+    limits:
+      memory: 2Gi
+      cpu: 2
+
+jobservice:
+  replicas: 2
+  resources:
+    requests:
+      memory: 1Gi
+      cpu: 500m
+    limits:
+      memory: 2Gi
+      cpu: 2
+
+registry:
+  replicas: 2
+  registry:
+    resources:
+      requests:
+        memory: 1Gi
+        cpu: 500m
+      limits:
+        memory: 2Gi
+        cpu: 2
+  controller:
+    resources:
+      requests:
+        memory: 512Mi
+        cpu: 250m
+      limits:
+        memory: 1Gi
+        cpu: 1
+
+portal:
+  replicas: 2
+  resources:
+    requests:
+      memory: 256Mi
+      cpu: 100m
+    limits:
+      memory: 512Mi
+      cpu: 500m
+
+# Trivy vulnerability scanner
+trivy:
+  enabled: true
+  replicas: 1
+  resources:
+    requests:
+      memory: 1Gi
+      cpu: 500m
+    limits:
+      memory: 2Gi
+      cpu: 2
+
+# Use external PostgreSQL for production
+# Recommended: Managed database service
+database:
+  type: internal  # Change to 'external' for production
+  internal:
+    resources:
+      requests:
+        memory: 1Gi
+        cpu: 500m
+      limits:
+        memory: 2Gi
+        cpu: 2
+  # Uncomment for external database
+  # external:
+  #   host: "postgres.company.local"
+  #   port: "5432"
+  #   username: "harbor"
+  #   password: "changeme"
+  #   coreDatabase: "registry"
+  #   notaryServerDatabase: "notary_server"
+  #   notarySignerDatabase: "notary_signer"
+  #   sslmode: "require"
+
+# Use external Redis for production
+redis:
+  type: internal  # Change to 'external' for production
+  internal:
+    resources:
+      requests:
+        memory: 512Mi
+        cpu: 250m
+      limits:
+        memory: 1Gi
+        cpu: 1
+  # Uncomment for external Redis
+  # external:
+  #   addr: "redis.company.local:6379"
+  #   password: "changeme"
+  #   database: "0"
+
+# Notary (image signing) - enabled for production
+notary:
+  enabled: true
+  server:
+    replicas: 2
+    resources:
+      requests:
+        memory: 256Mi
+        cpu: 100m
+      limits:
+        memory: 512Mi
+        cpu: 500m
+  signer:
+    replicas: 2
+    resources:
+      requests:
+        memory: 256Mi
+        cpu: 100m
+      limits:
+        memory: 512Mi
+        cpu: 500m
+
+# Harbor admin credentials
+# IMPORTANT: Use Vault or external secret management in production
+harborAdminPassword: ""  # Set via --set or external secret
+
+# Metrics for Prometheus
+metrics:
+  enabled: true
+  core:
+    path: /metrics
+    port: 8001
+  registry:
+    path: /metrics
+    port: 8001
+  exporter:
+    path: /metrics
+    port: 8001
+
+# Log level
+logLevel: info
+
+# Update strategy
+updateStrategy:
+  type: RollingUpdate
+  rollingUpdate:
+    maxSurge: 1
+    maxUnavailable: 0
+
+# Image pull policy
+imagePullPolicy: IfNotPresent
+
+# Cache layer for registry performance
+cache:
+  enabled: true
+  expireHours: 24
+
+# OIDC/OAuth configuration for SSO
+# Uncomment and configure for production
+# externalURL: https://harbor.company.local
+# authMode: "oidc_auth"
+# oidc:
+#   name: "keycloak"
+#   endpoint: "https://keycloak.company.local/auth/realms/company"
+#   clientId: "harbor"
+#   clientSecret: "changeme"
+#   groupsClaim: "groups"
+#   adminGroup: "harbor-admin"
+#   scope: "openid,profile,email"
+#   verifyCert: true

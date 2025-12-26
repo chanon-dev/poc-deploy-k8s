@@ -1,0 +1,11 @@
+# Harbor Namespace
+# Container Registry for storing Docker images
+
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: harbor
+  labels:
+    name: harbor
+    type: infrastructure
+    component: container-registry

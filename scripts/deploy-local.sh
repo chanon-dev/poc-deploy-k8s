@@ -165,10 +165,30 @@ helm upgrade --install vault hashicorp/vault \
 echo -e "${GREEN}✓ Vault deployed${NC}"
 echo ""
 
-# Phase 6: Apply Ingress Resources (if installed)
+# Phase 6: Harbor (Container Registry)
+echo "=============================================="
+echo "Phase 6: Deploying Harbor (Container Registry)"
+echo "=============================================="
+
+# Add Harbor helm repo
+helm repo add harbor https://helm.goharbor.io &>/dev/null || true
+helm repo update &>/dev/null
+
+echo "Installing Harbor (this may take 5-10 minutes)..."
+helm upgrade --install harbor harbor/harbor \
+  -f core-components/harbor/values-local.yaml \
+  -n harbor \
+  --create-namespace \
+  --wait \
+  --timeout 15m
+
+echo -e "${GREEN}✓ Harbor deployed${NC}"
+echo ""
+
+# Phase 7: Apply Ingress Resources (if installed)
 if [ "$INSTALL_INGRESS" = true ]; then
     echo "=============================================="
-    echo "Phase 6: Configuring Ingress Resources"
+    echo "Phase 7: Configuring Ingress Resources"
     echo "=============================================="
 
     # Create TLS certificate for Argo CD (SSL Termination at Ingress)
@@ -206,13 +226,14 @@ if [ "$INSTALL_INGRESS" = true ]; then
     echo ""
     echo "Run this command:"
     echo ""
-    echo -e "${BLUE}sudo sh -c 'echo \"127.0.0.1 jenkins.local argocd.local argocd-http.local vault.local\" >> /etc/hosts'${NC}"
+    echo -e "${BLUE}sudo sh -c 'echo \"127.0.0.1 jenkins.local argocd.local argocd-http.local vault.local harbor.local\" >> /etc/hosts'${NC}"
     echo ""
     echo "Or manually edit /etc/hosts and add:"
     echo "127.0.0.1 jenkins.local"
     echo "127.0.0.1 argocd.local"
     echo "127.0.0.1 argocd-http.local"
     echo "127.0.0.1 vault.local"
+    echo "127.0.0.1 harbor.local"
     echo ""
 fi
 
@@ -229,6 +250,7 @@ echo "  ✅ RBAC (basic)"
 echo "  ✅ Jenkins (single instance)"
 echo "  ✅ Argo CD (single instance)"
 echo "  ✅ Vault (standalone mode)"
+echo "  ✅ Harbor (container registry)"
 echo ""
 echo -e "${BLUE}Next Steps:${NC}"
 echo ""
@@ -249,8 +271,15 @@ echo "   kubectl exec -n vault vault-0 -- vault operator init"
 echo "   (Save the unseal keys and root token!)"
 echo ""
 
+# Get Harbor password
+echo "4️⃣  Get Harbor admin password:"
+echo "   Default credentials:"
+echo "   Username: admin"
+echo "   Password: HarborAdmin123"
+echo ""
+
 # Access services
-echo "4️⃣  Access services:"
+echo "5️⃣  Access services:"
 echo ""
 
 if [ "$INSTALL_INGRESS" = true ]; then
@@ -258,6 +287,7 @@ if [ "$INSTALL_INGRESS" = true ]; then
     echo "   Jenkins:  http://jenkins.local"
     echo "   Argo CD:  https://argocd.local (or http://argocd-http.local)"
     echo "   Vault:    http://vault.local"
+    echo "   Harbor:   http://harbor.local"
     echo ""
     echo "   Make sure /etc/hosts is updated (see above)"
     echo ""
@@ -276,6 +306,10 @@ else
     echo "   kubectl port-forward -n vault svc/vault 8200:8200"
     echo "   → http://localhost:8200"
     echo ""
+    echo "   # Harbor"
+    echo "   kubectl port-forward -n harbor svc/harbor-portal 8888:80"
+    echo "   → http://localhost:8888"
+    echo ""
 
     # Quick access script
     cat > /tmp/access-services.sh << 'EOF'
@@ -284,10 +318,12 @@ echo "Starting port-forwards..."
 kubectl port-forward -n jenkins svc/jenkins 8080:8080 &
 kubectl port-forward -n argocd svc/argocd-server 8443:443 &
 kubectl port-forward -n vault svc/vault 8200:8200 &
+kubectl port-forward -n harbor svc/harbor-portal 8888:80 &
 echo "Services accessible at:"
 echo "  Jenkins:  http://localhost:8080"
 echo "  Argo CD:  https://localhost:8443"
 echo "  Vault:    http://localhost:8200"
+echo "  Harbor:   http://localhost:8888"
 echo ""
 echo "Press Ctrl+C to stop all port-forwards"
 wait

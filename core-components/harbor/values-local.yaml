@@ -1,0 +1,179 @@
+# Harbor Helm Chart Values - LOCAL CONFIGURATION
+# สำหรับรันบนเครื่อง local (Docker Desktop, Minikube)
+#
+# Harbor Version: 1.13.x or later
+# Helm Chart: https://github.com/goharbor/harbor-helm
+
+# External URL configuration
+externalURL: http://harbor.local
+
+# Expose service via Ingress
+expose:
+  type: ingress
+  tls:
+    enabled: false  # ใช้ HTTP สำหรับ local dev
+  ingress:
+    className: nginx
+    hosts:
+      core: harbor.local
+    annotations:
+      nginx.ingress.kubernetes.io/ssl-redirect: "false"
+      nginx.ingress.kubernetes.io/proxy-body-size: "0"  # Unlimited upload size
+      nginx.ingress.kubernetes.io/proxy-request-buffering: "off"
+
+# Persistence configuration
+persistence:
+  enabled: true
+  # If persistence is disabled, data will be lost when pods restart
+  resourcePolicy: "keep"
+
+  persistentVolumeClaim:
+    registry:
+      storageClass: ""  # Use default storage class
+      size: 10Gi       # ลดจาก 50Gi สำหรับ local
+      accessMode: ReadWriteOnce
+
+    jobservice:
+      storageClass: ""
+      size: 1Gi
+      accessMode: ReadWriteOnce
+
+    database:
+      storageClass: ""
+      size: 2Gi        # ลดจาก 5Gi
+      accessMode: ReadWriteOnce
+
+    redis:
+      storageClass: ""
+      size: 1Gi
+      accessMode: ReadWriteOnce
+
+    trivy:
+      storageClass: ""
+      size: 2Gi        # ลดจาก 5Gi
+      accessMode: ReadWriteOnce
+
+# Harbor core component configuration
+core:
+  replicas: 1
+  resources:
+    requests:
+      memory: 256Mi
+      cpu: 100m
+    limits:
+      memory: 512Mi
+      cpu: 500m
+
+# Job service configuration
+jobservice:
+  replicas: 1
+  resources:
+    requests:
+      memory: 256Mi
+      cpu: 100m
+    limits:
+      memory: 512Mi
+      cpu: 500m
+
+# Registry configuration
+registry:
+  replicas: 1
+  registry:
+    resources:
+      requests:
+        memory: 256Mi
+        cpu: 100m
+      limits:
+        memory: 512Mi
+        cpu: 500m
+  controller:
+    resources:
+      requests:
+        memory: 256Mi
+        cpu: 100m
+      limits:
+        memory: 512Mi
+        cpu: 500m
+
+# Portal (Web UI) configuration
+portal:
+  replicas: 1
+  resources:
+    requests:
+      memory: 128Mi
+      cpu: 100m
+    limits:
+      memory: 256Mi
+      cpu: 500m
+
+# Trivy scanner configuration
+trivy:
+  enabled: true  # Enable vulnerability scanning
+  replicas: 1
+  resources:
+    requests:
+      memory: 256Mi
+      cpu: 200m
+    limits:
+      memory: 512Mi
+      cpu: 1
+
+# PostgreSQL database (internal)
+database:
+  type: internal
+  internal:
+    resources:
+      requests:
+        memory: 256Mi
+        cpu: 100m
+      limits:
+        memory: 512Mi
+        cpu: 500m
+
+# Redis cache (internal)
+redis:
+  type: internal
+  internal:
+    resources:
+      requests:
+        memory: 128Mi
+        cpu: 100m
+      limits:
+        memory: 256Mi
+        cpu: 500m
+
+# Notary (image signing) - disabled for local
+notary:
+  enabled: false
+
+# Harbor admin credentials
+# IMPORTANT: Change these in production!
+harborAdminPassword: "HarborAdmin123"
+
+# Metrics configuration
+metrics:
+  enabled: true
+  core:
+    path: /metrics
+    port: 8001
+  registry:
+    path: /metrics
+    port: 8001
+
+# Log level
+logLevel: info
+
+# Update strategy
+updateStrategy:
+  type: RollingUpdate
+
+# Container image pull policy
+imagePullPolicy: IfNotPresent
+
+# Enable/disable features
+# Cache layer for registry
+cache:
+  enabled: false  # Disable for local to save resources
+
+# OIDC/OAuth configuration (disabled for local)
+# Enable in production for SSO integration
