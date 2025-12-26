@@ -1,0 +1,117 @@
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: webapp
+  namespace: dev
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: webapp
+  namespace: dev
+  labels:
+    app: webapp
+    component: frontend
+    environment: dev
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: webapp
+      component: frontend
+  template:
+    metadata:
+      labels:
+        app: webapp
+        component: frontend
+        environment: dev
+      annotations:
+        # Enable Vault Agent Injector
+        vault.hashicorp.com/agent-inject: "true"
+        vault.hashicorp.com/role: "webapp-dev"
+        vault.hashicorp.com/agent-inject-secret-config: "secret/data/dev/webapp"
+        vault.hashicorp.com/agent-inject-template-config: |
+          {{- with secret "secret/data/dev/webapp" -}}
+          export JWT_SECRET="{{ .Data.data.jwt_secret }}"
+          export API_KEY="{{ .Data.data.api_key }}"
+          export ENCRYPTION_KEY="{{ .Data.data.encryption_key }}"
+          export NEXT_PUBLIC_API_URL="{{ .Data.data.next_public_api_url }}"
+          {{- end }}
+        # Inject shared secrets
+        vault.hashicorp.com/agent-inject-secret-database: "secret/data/dev/shared/database"
+        vault.hashicorp.com/agent-inject-template-database: |
+          {{- with secret "secret/data/dev/shared/database" -}}
+          export DB_HOST="{{ .Data.data.host }}"
+          export DB_PORT="{{ .Data.data.port }}"
+          export DB_USERNAME="{{ .Data.data.username }}"
+          export DB_PASSWORD="{{ .Data.data.password }}"
+          export DB_DATABASE="{{ .Data.data.database }}"
+          {{- end }}
+    spec:
+      serviceAccountName: webapp
+      containers:
+      - name: webapp
+        image: harbor.local/sample-app/webapp:latest
+        imagePullPolicy: Always
+        ports:
+        - containerPort: 3000
+          name: http
+          protocol: TCP
+        command: ["/bin/sh", "-c"]
+        args:
+          - |
+            # Source secrets from Vault Agent
+            if [ -f /vault/secrets/config ]; then
+              source /vault/secrets/config
+            fi
+            if [ -f /vault/secrets/database ]; then
+              source /vault/secrets/database
+            fi
+
+            # Start the application
+            node server.js
+        env:
+        - name: NODE_ENV
+          value: "production"
+        - name: PORT
+          value: "3000"
+        # Note: Sensitive env vars are injected by Vault Agent
+        resources:
+          requests:
+            memory: "128Mi"
+            cpu: "100m"
+          limits:
+            memory: "256Mi"
+            cpu: "200m"
+        livenessProbe:
+          httpGet:
+            path: /
+            port: 3000
+          initialDelaySeconds: 30
+          periodSeconds: 10
+          timeoutSeconds: 5
+          failureThreshold: 3
+        readinessProbe:
+          httpGet:
+            path: /
+            port: 3000
+          initialDelaySeconds: 10
+          periodSeconds: 5
+          timeoutSeconds: 3
+          failureThreshold: 3
+      imagePullSecrets:
+      - name: harbor-registry-secret
+---
+# Kubernetes authentication role binding for Vault
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: webapp-dev-vault-tokenreview
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: system:auth-delegator
+subjects:
+- kind: ServiceAccount
+  name: webapp
+  namespace: dev

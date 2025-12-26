@@ -1,0 +1,130 @@
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: webapi
+  namespace: dev
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: webapi
+  namespace: dev
+  labels:
+    app: webapi
+    component: backend
+    environment: dev
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: webapi
+      component: backend
+  template:
+    metadata:
+      labels:
+        app: webapi
+        component: backend
+        environment: dev
+      annotations:
+        # Enable Vault Agent Injector
+        vault.hashicorp.com/agent-inject: "true"
+        vault.hashicorp.com/role: "webapi-dev"
+        vault.hashicorp.com/agent-inject-secret-config: "secret/data/dev/webapi"
+        vault.hashicorp.com/agent-inject-template-config: |
+          {{- with secret "secret/data/dev/webapi" -}}
+          {
+            "JwtSettings": {
+              "Secret": "{{ .Data.data.jwt_secret }}",
+              "Issuer": "{{ .Data.data.jwt_issuer }}",
+              "Audience": "{{ .Data.data.jwt_audience }}"
+            },
+            "ConnectionStrings": {
+              "DefaultConnection": "{{ .Data.data.database_connection_string }}",
+              "Redis": "{{ .Data.data.redis_connection_string }}"
+            },
+            "SmtpSettings": {
+              "Password": "{{ .Data.data.smtp_password }}"
+            }
+          }
+          {{- end }}
+        # Inject shared database secrets
+        vault.hashicorp.com/agent-inject-secret-database: "secret/data/dev/shared/database"
+        vault.hashicorp.com/agent-inject-template-database: |
+          {{- with secret "secret/data/dev/shared/database" -}}
+          export DB_HOST="{{ .Data.data.host }}"
+          export DB_PORT="{{ .Data.data.port }}"
+          export DB_USERNAME="{{ .Data.data.username }}"
+          export DB_PASSWORD="{{ .Data.data.password }}"
+          export DB_DATABASE="{{ .Data.data.database }}"
+          export CONNECTION_STRING="Server={{ .Data.data.host }};Port={{ .Data.data.port }};Database={{ .Data.data.database }};User Id={{ .Data.data.username }};Password={{ .Data.data.password }};"
+          {{- end }}
+    spec:
+      serviceAccountName: webapi
+      containers:
+      - name: webapi
+        image: harbor.local/sample-app/webapi:latest
+        imagePullPolicy: Always
+        ports:
+        - containerPort: 5000
+          name: http
+          protocol: TCP
+        command: ["/bin/sh", "-c"]
+        args:
+          - |
+            # Source database secrets from Vault Agent
+            if [ -f /vault/secrets/database ]; then
+              source /vault/secrets/database
+            fi
+
+            # Copy Vault secrets to appsettings location
+            if [ -f /vault/secrets/config ]; then
+              cp /vault/secrets/config /app/appsettings.Secrets.json
+            fi
+
+            # Start the application
+            dotnet webapi.dll
+        env:
+        - name: ASPNETCORE_ENVIRONMENT
+          value: "Production"
+        - name: ASPNETCORE_URLS
+          value: "http://+:5000"
+        # Note: Sensitive env vars are injected by Vault Agent
+        resources:
+          requests:
+            memory: "128Mi"
+            cpu: "100m"
+          limits:
+            memory: "256Mi"
+            cpu: "200m"
+        livenessProbe:
+          httpGet:
+            path: /api/health
+            port: 5000
+          initialDelaySeconds: 30
+          periodSeconds: 10
+          timeoutSeconds: 5
+          failureThreshold: 3
+        readinessProbe:
+          httpGet:
+            path: /api/health
+            port: 5000
+          initialDelaySeconds: 10
+          periodSeconds: 5
+          timeoutSeconds: 3
+          failureThreshold: 3
+      imagePullSecrets:
+      - name: harbor-registry-secret
+---
+# Kubernetes authentication role binding for Vault
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: webapi-dev-vault-tokenreview
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: system:auth-delegator
+subjects:
+- kind: ServiceAccount
+  name: webapi
+  namespace: dev

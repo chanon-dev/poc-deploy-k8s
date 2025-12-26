@@ -368,6 +368,63 @@
 
 ---
 
+### Task 5.3: Create Sample Application with Full CI/CD Integration
+
+**TH:** สร้าง Sample Application พร้อม CI/CD Pipeline
+
+- [x] **5.3.1** Create Next.js Webapp (Frontend)
+
+  - **TH:** สร้าง Next.js Webapp
+  - TypeScript, React 18, API integration
+  - Location: `app/webapp/`
+- [x] **5.3.2** Create C# ASP.NET Core WebAPI (Backend)
+
+  - **TH:** สร้าง C# WebAPI
+  - .NET 8, Minimal API, Swagger/OpenAPI
+  - Health check and sample endpoints
+  - Location: `app/webapi/`
+- [x] **5.3.3** Create Dockerfiles for both applications
+
+  - **TH:** สร้าง Dockerfile สำหรับทั้งสอง application
+  - Multi-stage builds for optimization
+  - Security: non-root users
+- [x] **5.3.4** Create Jenkinsfile for CI/CD pipeline
+
+  - **TH:** สร้าง Jenkinsfile สำหรับ CI/CD pipeline
+  - 7 stages: Checkout, Build Webapp, Build WebAPI, Security Scan, Push to Harbor, Update Manifests, Trigger Argo CD
+  - Location: `app/Jenkinsfile`
+- [x] **5.3.5** Create Kubernetes manifests for Dev environment
+
+  - **TH:** สร้าง Kubernetes manifest สำหรับ Dev
+  - Deployments, Services, Ingress, ConfigMap
+  - Location: `environments/dev/`
+- [x] **5.3.6** Create Argo CD Application definitions
+
+  - **TH:** สร้าง Argo CD Application definition
+  - Auto-sync enabled with self-healing
+  - Separate apps: webapp, webapi, ingress
+  - Location: `ci-cd/argocd-apps/`
+- [x] **5.3.7** Create comprehensive documentation
+
+  - **TH:** สร้างเอกสารครบถ้วน
+  - Main README, Deployment Guide, Component READMEs
+  - Location: `app/README.md`, `app/DEPLOYMENT-GUIDE.md`
+
+**Priority:** 🔴 Critical
+**Status:** ✅ Completed
+**Dependencies:** Task 2.1, 2.2, 2.4, 2.5
+
+**Deliverables:**
+- Next.js webapp with TypeScript
+- C# WebAPI with Swagger
+- Multi-stage Dockerfiles
+- Complete Jenkins pipeline (7 stages)
+- Kubernetes manifests (Deployment, Service, Ingress)
+- Argo CD Application CRDs
+- Full documentation set
+
+---
+
 ## 6. Git Repository Setup / การตั้งค่า Git Repository
 
 ### Task 6.1: Setup Git Repositories

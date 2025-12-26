@@ -1,0 +1,77 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: webapp
+  namespace: dev
+  labels:
+    app: webapp
+    component: frontend
+    environment: dev
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: webapp
+      component: frontend
+  template:
+    metadata:
+      labels:
+        app: webapp
+        component: frontend
+        environment: dev
+    spec:
+      containers:
+      - name: webapp
+        image: harbor.local/sample-app/webapp:latest
+        imagePullPolicy: Always
+        ports:
+        - containerPort: 3000
+          name: http
+          protocol: TCP
+        env:
+        - name: NODE_ENV
+          value: "production"
+        - name: NEXT_PUBLIC_API_URL
+          value: "http://webapi-service:5000"
+        - name: PORT
+          value: "3000"
+        resources:
+          requests:
+            memory: "128Mi"
+            cpu: "100m"
+          limits:
+            memory: "256Mi"
+            cpu: "200m"
+        livenessProbe:
+          httpGet:
+            path: /
+            port: 3000
+          initialDelaySeconds: 30
+          periodSeconds: 10
+          timeoutSeconds: 5
+          failureThreshold: 3
+        readinessProbe:
+          httpGet:
+            path: /
+            port: 3000
+          initialDelaySeconds: 10
+          periodSeconds: 5
+          timeoutSeconds: 3
+          failureThreshold: 3
+      imagePullSecrets:
+      - name: harbor-registry-secret
+---
+apiVersion: v1
+kind: Secret
+metadata:
+  name: harbor-registry-secret
+  namespace: dev
+type: kubernetes.io/dockerconfigjson
+data:
+  # Base64 encoded Docker config JSON
+  # Create with: kubectl create secret docker-registry harbor-registry-secret \
+  #   --docker-server=harbor.local \
+  #   --docker-username=admin \
+  #   --docker-password=HarborAdmin123 \
+  #   --namespace=dev
+  .dockerconfigjson: eyJhdXRocyI6eyJoYXJib3IubG9jYWwiOnsidXNlcm5hbWUiOiJhZG1pbiIsInBhc3N3b3JkIjoiSGFyYm9yQWRtaW4xMjMiLCJhdXRoIjoiWVdSdGFXNDZTR0Z5WW05eVFXUnRhVzR4TWpNPSJ9fX0=

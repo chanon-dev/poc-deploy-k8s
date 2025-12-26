@@ -1,0 +1,221 @@
+pipeline {
+    agent any
+
+    environment {
+        // Harbor registry configuration
+        HARBOR_REGISTRY = 'harbor.local'
+        HARBOR_PROJECT = 'sample-app'
+        HARBOR_CREDENTIAL_ID = 'harbor-credentials'
+
+        // Application versions
+        WEBAPP_IMAGE = "${HARBOR_REGISTRY}/${HARBOR_PROJECT}/webapp"
+        WEBAPI_IMAGE = "${HARBOR_REGISTRY}/${HARBOR_PROJECT}/webapi"
+
+        // Git configuration
+        GIT_COMMIT_SHORT = sh(script: "git rev-parse --short HEAD", returnStdout: true).trim()
+        BUILD_TAG = "${env.BUILD_NUMBER}-${GIT_COMMIT_SHORT}"
+
+        // Kubernetes manifest repository
+        K8S_REPO = 'https://github.com/chanon-dev/poc-deploy-k8s.git'
+        K8S_BRANCH = 'main'
+
+        // Docker build options
+        DOCKER_BUILDKIT = '1'
+    }
+
+    options {
+        buildDiscarder(logRotator(numToKeepStr: '10'))
+        timeout(time: 30, unit: 'MINUTES')
+        timestamps()
+    }
+
+    stages {
+        stage('Checkout') {
+            steps {
+                echo 'Checking out source code...'
+                checkout scm
+
+                script {
+                    echo "Build Tag: ${BUILD_TAG}"
+                    echo "Git Commit: ${GIT_COMMIT_SHORT}"
+                }
+            }
+        }
+
+        stage('Build Webapp') {
+            steps {
+                echo 'Building Next.js Webapp...'
+                dir('app/webapp') {
+                    script {
+                        sh """
+                            docker build \
+                                -t ${WEBAPP_IMAGE}:${BUILD_TAG} \
+                                -t ${WEBAPP_IMAGE}:latest \
+                                --build-arg NEXT_PUBLIC_API_URL=http://webapi-service:5000 \
+                                .
+                        """
+                    }
+                }
+            }
+        }
+
+        stage('Build WebAPI') {
+            steps {
+                echo 'Building C# WebAPI...'
+                dir('app/webapi') {
+                    script {
+                        sh """
+                            docker build \
+                                -t ${WEBAPI_IMAGE}:${BUILD_TAG} \
+                                -t ${WEBAPI_IMAGE}:latest \
+                                .
+                        """
+                    }
+                }
+            }
+        }
+
+        stage('Security Scan') {
+            parallel {
+                stage('Scan Webapp') {
+                    steps {
+                        echo 'Scanning Webapp image for vulnerabilities...'
+                        script {
+                            // Using Trivy for vulnerability scanning
+                            sh """
+                                docker run --rm -v /var/run/docker.sock:/var/run/docker.sock \
+                                    aquasec/trivy:latest image \
+                                    --severity HIGH,CRITICAL \
+                                    --exit-code 0 \
+                                    ${WEBAPP_IMAGE}:${BUILD_TAG} || true
+                            """
+                        }
+                    }
+                }
+
+                stage('Scan WebAPI') {
+                    steps {
+                        echo 'Scanning WebAPI image for vulnerabilities...'
+                        script {
+                            sh """
+                                docker run --rm -v /var/run/docker.sock:/var/run/docker.sock \
+                                    aquasec/trivy:latest image \
+                                    --severity HIGH,CRITICAL \
+                                    --exit-code 0 \
+                                    ${WEBAPI_IMAGE}:${BUILD_TAG} || true
+                            """
+                        }
+                    }
+                }
+            }
+        }
+
+        stage('Push to Harbor') {
+            steps {
+                echo 'Pushing images to Harbor registry...'
+                script {
+                    docker.withRegistry("http://${HARBOR_REGISTRY}", HARBOR_CREDENTIAL_ID) {
+                        // Push Webapp
+                        sh """
+                            docker push ${WEBAPP_IMAGE}:${BUILD_TAG}
+                            docker push ${WEBAPP_IMAGE}:latest
+                        """
+
+                        // Push WebAPI
+                        sh """
+                            docker push ${WEBAPI_IMAGE}:${BUILD_TAG}
+                            docker push ${WEBAPI_IMAGE}:latest
+                        """
+                    }
+                }
+            }
+        }
+
+        stage('Update Kubernetes Manifests') {
+            steps {
+                echo 'Updating Kubernetes manifests with new image tags...'
+                script {
+                    withCredentials([usernamePassword(
+                        credentialsId: 'github-credentials',
+                        usernameVariable: 'GIT_USERNAME',
+                        passwordVariable: 'GIT_PASSWORD'
+                    )]) {
+                        sh """
+                            # Clone manifest repository
+                            rm -rf k8s-manifests
+                            git clone ${K8S_REPO} k8s-manifests
+                            cd k8s-manifests
+
+                            # Configure git
+                            git config user.name "Jenkins CI"
+                            git config user.email "jenkins@example.com"
+
+                            # Update webapp deployment
+                            sed -i 's|image: ${WEBAPP_IMAGE}:.*|image: ${WEBAPP_IMAGE}:${BUILD_TAG}|' \
+                                environments/dev/webapp-deployment.yaml
+
+                            # Update webapi deployment
+                            sed -i 's|image: ${WEBAPI_IMAGE}:.*|image: ${WEBAPI_IMAGE}:${BUILD_TAG}|' \
+                                environments/dev/webapi-deployment.yaml
+
+                            # Commit and push changes
+                            git add .
+                            git commit -m "Update images to version ${BUILD_TAG}" || true
+                            git push https://${GIT_USERNAME}:${GIT_PASSWORD}@github.com/chanon-dev/poc-deploy-k8s.git ${K8S_BRANCH}
+                        """
+                    }
+                }
+            }
+        }
+
+        stage('Trigger ArgoCD Sync') {
+            steps {
+                echo 'Triggering ArgoCD synchronization...'
+                script {
+                    withCredentials([string(
+                        credentialsId: 'argocd-token',
+                        variable: 'ARGOCD_TOKEN'
+                    )]) {
+                        sh """
+                            # Sync webapp application
+                            curl -k -X POST \
+                                -H "Authorization: Bearer \${ARGOCD_TOKEN}" \
+                                -H "Content-Type: application/json" \
+                                https://argocd.local/api/v1/applications/sample-webapp/sync
+
+                            # Sync webapi application
+                            curl -k -X POST \
+                                -H "Authorization: Bearer \${ARGOCD_TOKEN}" \
+                                -H "Content-Type: application/json" \
+                                https://argocd.local/api/v1/applications/sample-webapi/sync
+                        """
+                    }
+                }
+            }
+        }
+    }
+
+    post {
+        success {
+            echo "Pipeline completed successfully!"
+            echo "Webapp image: ${WEBAPP_IMAGE}:${BUILD_TAG}"
+            echo "WebAPI image: ${WEBAPI_IMAGE}:${BUILD_TAG}"
+        }
+
+        failure {
+            echo "Pipeline failed!"
+        }
+
+        always {
+            // Clean up Docker images from Jenkins node
+            sh """
+                docker rmi ${WEBAPP_IMAGE}:${BUILD_TAG} || true
+                docker rmi ${WEBAPP_IMAGE}:latest || true
+                docker rmi ${WEBAPI_IMAGE}:${BUILD_TAG} || true
+                docker rmi ${WEBAPI_IMAGE}:latest || true
+            """
+
+            cleanWs()
+        }
+    }
+}
