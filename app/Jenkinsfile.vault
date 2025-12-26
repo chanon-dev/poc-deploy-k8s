@@ -42,15 +42,27 @@ pipeline {
                         string(credentialsId: 'vault-role-id', variable: 'VAULT_ROLE_ID'),
                         string(credentialsId: 'vault-secret-id', variable: 'VAULT_SECRET_ID')
                     ]) {
-                        // Login to Vault and get token
+                        // Login to Vault and get token (without jq dependency)
                         sh '''
                             # Login to Vault using AppRole
-                            VAULT_TOKEN=$(curl -s --request POST \
+                            RESPONSE=$(curl -s --request POST \
                                 --data "{\\"role_id\\": \\"${VAULT_ROLE_ID}\\", \\"secret_id\\": \\"${VAULT_SECRET_ID}\\"}" \
-                                ${VAULT_ADDR}/v1/auth/approle/login | jq -r '.auth.client_token')
+                                ${VAULT_ADDR}/v1/auth/approle/login)
+
+                            # Extract client_token using grep and cut (instead of jq)
+                            VAULT_TOKEN=$(echo "$RESPONSE" | grep -o '"client_token":"[^"]*' | cut -d'"' -f4)
+
+                            # Validate token
+                            if [ -z "$VAULT_TOKEN" ] || [ "$VAULT_TOKEN" = "null" ]; then
+                                echo "❌ Error: Failed to get Vault token"
+                                echo "Response from Vault:"
+                                echo "$RESPONSE"
+                                exit 1
+                            fi
 
                             # Save token to file (will be used in subsequent stages)
-                            echo $VAULT_TOKEN > .vault-token
+                            echo "$VAULT_TOKEN" > .vault-token
+                            echo "✅ Vault login successful"
                         '''
                     }
 
@@ -79,32 +91,32 @@ pipeline {
                     sh '''
                         export VAULT_TOKEN=$(cat .vault-token)
 
-                        # Read Harbor credentials
-                        HARBOR_USERNAME=$(curl -s -H "X-Vault-Token: ${VAULT_TOKEN}" \
-                            ${VAULT_ADDR}/v1/secret/data/ci/harbor | jq -r '.data.data.username')
-                        HARBOR_PASSWORD=$(curl -s -H "X-Vault-Token: ${VAULT_TOKEN}" \
-                            ${VAULT_ADDR}/v1/secret/data/ci/harbor | jq -r '.data.data.password')
+                        # Read Harbor credentials (without jq)
+                        RESPONSE=$(curl -s -H "X-Vault-Token: ${VAULT_TOKEN}" ${VAULT_ADDR}/v1/secret/data/ci/harbor)
+                        HARBOR_USERNAME=$(echo "$RESPONSE" | grep -o '"username":"[^"]*' | cut -d'"' -f4)
+                        HARBOR_PASSWORD=$(echo "$RESPONSE" | grep -o '"password":"[^"]*' | cut -d'"' -f4)
 
                         # Save to environment file (will be sourced in docker login)
                         echo "HARBOR_USERNAME=${HARBOR_USERNAME}" > .harbor-creds
                         echo "HARBOR_PASSWORD=${HARBOR_PASSWORD}" >> .harbor-creds
 
-                        # Read GitHub credentials
-                        GIT_USERNAME=$(curl -s -H "X-Vault-Token: ${VAULT_TOKEN}" \
-                            ${VAULT_ADDR}/v1/secret/data/ci/github | jq -r '.data.data.username')
-                        GIT_TOKEN=$(curl -s -H "X-Vault-Token: ${VAULT_TOKEN}" \
-                            ${VAULT_ADDR}/v1/secret/data/ci/github | jq -r '.data.data.token')
+                        # Read GitHub credentials (without jq)
+                        RESPONSE=$(curl -s -H "X-Vault-Token: ${VAULT_TOKEN}" ${VAULT_ADDR}/v1/secret/data/ci/github)
+                        GIT_USERNAME=$(echo "$RESPONSE" | grep -o '"username":"[^"]*' | cut -d'"' -f4)
+                        GIT_TOKEN=$(echo "$RESPONSE" | grep -o '"token":"[^"]*' | cut -d'"' -f4)
 
                         echo "GIT_USERNAME=${GIT_USERNAME}" > .git-creds
                         echo "GIT_TOKEN=${GIT_TOKEN}" >> .git-creds
 
                         # Read build secrets (if any)
-                        NPM_TOKEN=$(curl -s -H "X-Vault-Token: ${VAULT_TOKEN}" \
-                            ${VAULT_ADDR}/v1/secret/data/ci/docker/build-args | jq -r '.data.data.npm_token // empty')
+                        RESPONSE=$(curl -s -H "X-Vault-Token: ${VAULT_TOKEN}" ${VAULT_ADDR}/v1/secret/data/ci/docker/build-args 2>/dev/null || echo "")
+                        NPM_TOKEN=$(echo "$RESPONSE" | grep -o '"npm_token":"[^"]*' | cut -d'"' -f4)
 
-                        if [ ! -z "$NPM_TOKEN" ]; then
+                        if [ ! -z "$NPM_TOKEN" ] && [ "$NPM_TOKEN" != "null" ]; then
                             echo "NPM_TOKEN=${NPM_TOKEN}" > .build-secrets
                         fi
+
+                        echo "✅ Secrets read successfully"
                     '''
 
                     echo 'Secrets loaded from Vault'
@@ -300,18 +312,28 @@ pipeline {
         }
 
         always {
-            // Clean up sensitive files
-            sh """
-                rm -f .vault-token .harbor-creds .git-creds .build-secrets || true
+            script {
+                // Clean up sensitive files
+                sh """
+                    rm -f .vault-token .harbor-creds .git-creds .build-secrets || true
+                """
 
-                # Clean up Docker images from Jenkins node
-                docker rmi ${WEBAPP_IMAGE}:${BUILD_TAG} || true
-                docker rmi ${WEBAPP_IMAGE}:latest || true
-                docker rmi ${WEBAPI_IMAGE}:${BUILD_TAG} || true
-                docker rmi ${WEBAPI_IMAGE}:latest || true
-            """
+                // Clean up Docker images (only if docker command exists)
+                sh """
+                    if command -v docker &> /dev/null; then
+                        docker rmi ${WEBAPP_IMAGE}:${BUILD_TAG} 2>/dev/null || true
+                        docker rmi ${WEBAPP_IMAGE}:latest 2>/dev/null || true
+                        docker rmi ${WEBAPI_IMAGE}:${BUILD_TAG} 2>/dev/null || true
+                        docker rmi ${WEBAPI_IMAGE}:latest 2>/dev/null || true
+                        echo "✅ Docker images cleaned up"
+                    else
+                        echo "⚠️  Docker not available, skipping image cleanup"
+                    fi
+                """
+            }
 
-            cleanWs()
+            // Clean workspace (use deleteDir instead of cleanWs - no plugin required)
+            deleteDir()
         }
     }
 }
