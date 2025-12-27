@@ -1,6 +1,27 @@
-# CI/CD Pipelines
+# CI/CD Pipelines (ARCHIVED)
 
-Jenkins pipeline definitions for building and deploying applications.
+> **⚠️ ARCHIVED - For Reference Only**
+>
+> These monolithic pipelines that build both webapp and webapi in a single pipeline are **no longer recommended**.
+>
+> **Current Approach (Recommended):**
+>
+> - Each application now has its own independent Jenkinsfile
+> - [apps/webapp/Jenkinsfile](../apps/webapp/Jenkinsfile) - Webapp pipeline
+> - [apps/webapi/Jenkinsfile](../apps/webapi/Jenkinsfile) - WebAPI pipeline
+>
+> **Benefits of per-app pipelines:**
+>
+> - ✅ Deploy each app independently
+> - ✅ Faster builds (only changed app rebuilds)
+> - ✅ Clear ownership and isolation
+> - ✅ Better scalability when adding new apps
+>
+> This directory contains legacy pipelines for reference and learning purposes.
+
+---
+
+Jenkins pipeline definitions for building and deploying applications (monolithic approach).
 
 ## Available Pipelines
 

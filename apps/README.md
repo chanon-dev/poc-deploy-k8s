@@ -26,33 +26,43 @@ Example application demonstrating full CI/CD pipeline with Jenkins, Harbor, and 
 
 ### 3. CI/CD Pipelines
 
-Jenkins pipelines are in **[../pipelines/](../pipelines/)** directory.
+Each application has its own **independent Jenkinsfile** for isolated deployments:
 
-| Pipeline | Environment | Build Method | Use Case |
-|----------|-------------|--------------|----------|
-| [Jenkinsfile](../pipelines/Jenkinsfile) | Any | Docker | Development |
-| [Jenkinsfile.vault](../pipelines/Jenkinsfile.vault) | VM Jenkins | Docker + Vault | Development |
-| [Jenkinsfile.vault.k8s](../pipelines/Jenkinsfile.vault.k8s) | K8s | Docker-in-Docker | Development |
-| [Jenkinsfile.vault.kaniko](../pipelines/Jenkinsfile.vault.kaniko) | K8s | **Kaniko** | **Production** ⭐ |
+| Application | Pipeline                                 | Build Method | Description                      |
+|-------------|------------------------------------------|--------------|----------------------------------|
+| **Webapp**  | [webapp/Jenkinsfile](webapp/Jenkinsfile) | **Kaniko**   | Next.js production pipeline ⭐   |
+| **WebAPI**  | [webapi/Jenkinsfile](webapi/Jenkinsfile) | **Kaniko**   | .NET API production pipeline ⭐  |
 
-**📚 See:** [Pipelines README](../pipelines/README.md) | [Complete Documentation](../docs/jenkinsfile-vault-explained.md)
+**Benefits:**
+
+- ✅ Deploy each app independently
+- ✅ Faster builds (only changed app rebuilds)
+- ✅ Clear ownership and isolation
+- ✅ Production-ready with Kaniko (no privileged mode)
+
+**📚 See:** [Complete Documentation](../docs/jenkinsfile-vault-explained.md) | [Archived Pipelines](../pipelines-archive/README.md)
 
 ## CI/CD Pipeline Flow
 
+Each application deploys independently:
+
 ```
-1. Developer pushes code to Git
+1. Developer pushes code to Git (webapp/ or webapi/)
    ↓
-2. Jenkins detects change (webhook)
+2. Jenkins detects change (webhook triggers specific app pipeline)
    ↓
-3. Jenkins builds Docker images
+3. Application-specific Jenkinsfile executes:
+   - Vault Login (retrieve secrets securely)
+   - Checkout (clone source code)
+   - Build with Kaniko (no privileged mode needed)
+   - Security Scan with Trivy
+   - Push to Harbor Registry
    ↓
-4. Jenkins pushes images to Harbor
+4. Jenkins updates Kubernetes manifests (only changed app)
    ↓
-5. Jenkins updates k8s-manifests with new image tags
+5. Argo CD detects manifest changes
    ↓
-6. Argo CD detects manifest changes
-   ↓
-7. Argo CD deploys to Kubernetes
+6. Argo CD deploys to Kubernetes (only changed app)
 ```
 
 ## Quick Start
@@ -140,24 +150,29 @@ Then access:
 - **WebAPI:** http://api.local
 - **API Swagger:** http://api.local/swagger
 
-## Jenkins Pipeline
+## Jenkins Pipelines
 
-The `Jenkinsfile` defines a complete CI/CD pipeline:
+Each application has its own complete CI/CD pipeline:
 
-1. **Checkout:** Clone source code
-2. **Build Webapp:** Build Next.js Docker image
-3. **Build WebAPI:** Build C# Docker image
-4. **Security Scan:** Scan images with Trivy
-5. **Push to Harbor:** Push images to Harbor registry
+**Pipeline Stages:**
+
+1. **Vault Login:** Authenticate with HashiCorp Vault using AppRole
+2. **Checkout:** Clone source code from Git
+3. **Read Secrets:** Retrieve GitHub credentials from Vault
+4. **Build with Kaniko:** Build Docker image (no privileged mode)
+5. **Security Scan:** Scan image with Trivy for vulnerabilities
 6. **Update Manifests:** Update Kubernetes manifests with new image tags
-7. **Trigger Argo CD:** Trigger automatic deployment
+7. **Trigger Argo CD:** Trigger GitOps deployment
+8. **Record Build:** Store build metadata in Vault for audit
 
 ## Documentation
 
 - [Webapp README](webapp/README.md) - Next.js development guide
 - [WebAPI README](webapi/README.md) - C# API development guide
-- [Pipelines README](../pipelines/README.md) - CI/CD pipelines
+- [Webapp Jenkinsfile](webapp/Jenkinsfile) - Webapp CI/CD pipeline
+- [WebAPI Jenkinsfile](webapi/Jenkinsfile) - WebAPI CI/CD pipeline
 - [Manifests README](../manifests/README.md) - Kubernetes deployments
 - [Argo CD Apps README](../gitops/argocd-apps/README.md) - GitOps applications
 - [Vault Secrets Guide](../docs/vault-secrets-management.md) - Secrets management
 - [Jenkinsfile Explained](../docs/jenkinsfile-vault-explained.md) - Pipeline documentation
+- [Archived Pipelines](../pipelines-archive/README.md) - Legacy monolithic pipelines (reference only)
