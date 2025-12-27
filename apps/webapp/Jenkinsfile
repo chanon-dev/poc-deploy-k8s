@@ -22,11 +22,25 @@ kind: Pod
 metadata:
   labels:
     app: webapp-builder
+    team: platform
+    environment: ci-cd
 spec:
   serviceAccountName: jenkins
+  priorityClassName: ci-cd-high-priority
+  securityContext:
+    runAsNonRoot: true
+    runAsUser: 1000
+    fsGroup: 1000
+    seccompProfile:
+      type: RuntimeDefault
   containers:
   - name: jnlp
     image: jenkins/inbound-agent:3261.v9c670a_4748a_9-1
+    securityContext:
+      allowPrivilegeEscalation: false
+      capabilities:
+        drop:
+        - ALL
     resources:
       requests:
         memory: "256Mi"
@@ -39,6 +53,11 @@ spec:
     image: gcr.io/kaniko-project/executor:v1.23.2-debug
     command: ["/busybox/cat"]
     tty: true
+    securityContext:
+      allowPrivilegeEscalation: false
+      capabilities:
+        drop:
+        - ALL
     resources:
       requests:
         memory: "512Mi"
@@ -54,6 +73,12 @@ spec:
     image: alpine/git:2.45.1
     command: [cat]
     tty: true
+    securityContext:
+      allowPrivilegeEscalation: false
+      capabilities:
+        drop:
+        - ALL
+      readOnlyRootFilesystem: false
     resources:
       requests:
         memory: "128Mi"
@@ -66,6 +91,12 @@ spec:
     image: aquasec/trivy:0.55.2
     command: [cat]
     tty: true
+    securityContext:
+      allowPrivilegeEscalation: false
+      capabilities:
+        drop:
+        - ALL
+      readOnlyRootFilesystem: false
     resources:
       requests:
         memory: "256Mi"

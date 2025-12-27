@@ -1,0 +1,58 @@
+# PriorityClass for CI/CD Workloads
+# Ensures build pods have higher priority than regular application pods
+# Prevents build pods from being evicted during resource constraints
+
+---
+apiVersion: scheduling.k8s.io/v1
+kind: PriorityClass
+metadata:
+  name: ci-cd-high-priority
+  labels:
+    app.kubernetes.io/name: priority-class
+    app.kubernetes.io/component: infrastructure
+    app.kubernetes.io/managed-by: kubectl
+spec:
+  # Priority value: higher values = higher priority
+  # System critical pods: 2000000000
+  # CI/CD high priority: 1000000 (this)
+  # Default: 0
+  value: 1000000
+
+  # Don't allow preemption of other pods
+  # Only prevent this pod from being preempted
+  preemptionPolicy: Never
+
+  # Prevents accidental usage - pods must explicitly request this priority
+  globalDefault: false
+
+  description: "High priority for CI/CD build pods to ensure builds complete successfully"
+
+---
+apiVersion: scheduling.k8s.io/v1
+kind: PriorityClass
+metadata:
+  name: ci-cd-medium-priority
+  labels:
+    app.kubernetes.io/name: priority-class
+    app.kubernetes.io/component: infrastructure
+    app.kubernetes.io/managed-by: kubectl
+spec:
+  value: 500000
+  preemptionPolicy: Never
+  globalDefault: false
+  description: "Medium priority for CI/CD support pods (e.g., test runners, scanners)"
+
+---
+apiVersion: scheduling.k8s.io/v1
+kind: PriorityClass
+metadata:
+  name: ci-cd-low-priority
+  labels:
+    app.kubernetes.io/name: priority-class
+    app.kubernetes.io/component: infrastructure
+    app.kubernetes.io/managed-by: kubectl
+spec:
+  value: 100000
+  preemptionPolicy: PreemptLowerPriority
+  globalDefault: false
+  description: "Low priority for CI/CD cleanup and maintenance jobs"
