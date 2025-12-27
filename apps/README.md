@@ -26,15 +26,16 @@ Example application demonstrating full CI/CD pipeline with Jenkins, Harbor, and 
 
 ### 3. CI/CD Pipelines
 
-Available Jenkins pipelines:
+Jenkins pipelines are in **[../pipelines/](../pipelines/)** directory.
 
-| File | Purpose | Environment | Secrets |
-|------|---------|-------------|---------|
-| `Jenkinsfile` | Basic pipeline | Any | Jenkins Credentials |
-| `Jenkinsfile.vault` | Vault integration | VM Jenkins | HashiCorp Vault |
-| `Jenkinsfile.vault.k8s` | K8s-native with DinD | Jenkins on K8s | HashiCorp Vault |
+| Pipeline | Environment | Build Method | Use Case |
+|----------|-------------|--------------|----------|
+| [Jenkinsfile](../pipelines/Jenkinsfile) | Any | Docker | Development |
+| [Jenkinsfile.vault](../pipelines/Jenkinsfile.vault) | VM Jenkins | Docker + Vault | Development |
+| [Jenkinsfile.vault.k8s](../pipelines/Jenkinsfile.vault.k8s) | K8s | Docker-in-Docker | Development |
+| [Jenkinsfile.vault.kaniko](../pipelines/Jenkinsfile.vault.kaniko) | K8s | **Kaniko** | **Production** ⭐ |
 
-**📚 Complete Documentation:** [Jenkinsfile.vault Explained](../docs/jenkinsfile-vault-explained.md)
+**📚 See:** [Pipelines README](../pipelines/README.md) | [Complete Documentation](../docs/jenkinsfile-vault-explained.md)
 
 ## CI/CD Pipeline Flow
 
@@ -95,7 +96,7 @@ docker build -t harbor.local/sample-app/webapi:latest ./webapi
 
 ```bash
 # Create dev namespace
-kubectl apply -f ../environments/dev/namespace.yaml
+kubectl apply -f ../manifests/dev/namespace.yaml
 
 # Create Harbor registry secret
 kubectl create secret docker-registry harbor-registry-secret \
@@ -105,15 +106,15 @@ kubectl create secret docker-registry harbor-registry-secret \
   --namespace=dev
 
 # Apply Kubernetes manifests
-kubectl apply -f ../environments/dev/webapp-deployment.yaml
-kubectl apply -f ../environments/dev/webapp-service.yaml
-kubectl apply -f ../environments/dev/webapi-deployment.yaml
-kubectl apply -f ../environments/dev/webapi-service.yaml
-kubectl apply -f ../environments/dev/ingress.yaml
-kubectl apply -f ../environments/dev/configmap.yaml
+kubectl apply -f ../manifests/dev/webapp-deployment.yaml
+kubectl apply -f ../manifests/dev/webapp-service.yaml
+kubectl apply -f ../manifests/dev/webapi-deployment.yaml
+kubectl apply -f ../manifests/dev/webapi-service.yaml
+kubectl apply -f ../manifests/dev/ingress.yaml
+kubectl apply -f ../manifests/dev/configmap.yaml
 
 # Or use Argo CD Applications
-kubectl apply -f ../ci-cd/argocd-apps/
+kubectl apply -f ../gitops/argocd-apps/
 ```
 
 ## Environment Variables
@@ -155,4 +156,8 @@ The `Jenkinsfile` defines a complete CI/CD pipeline:
 
 - [Webapp README](webapp/README.md) - Next.js development guide
 - [WebAPI README](webapi/README.md) - C# API development guide
-- [Argo CD Apps README](../ci-cd/argocd-apps/README.md) - Deployment guide
+- [Pipelines README](../pipelines/README.md) - CI/CD pipelines
+- [Manifests README](../manifests/README.md) - Kubernetes deployments
+- [Argo CD Apps README](../gitops/argocd-apps/README.md) - GitOps applications
+- [Vault Secrets Guide](../docs/vault-secrets-management.md) - Secrets management
+- [Jenkinsfile Explained](../docs/jenkinsfile-vault-explained.md) - Pipeline documentation
