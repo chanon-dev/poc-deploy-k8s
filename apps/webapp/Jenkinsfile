@@ -2,6 +2,18 @@
 // Build method: Kaniko (production-ready, no privileged mode)
 
 pipeline {
+    parameters {
+        string(name: 'HARBOR_REGISTRY', defaultValue: 'harbor.local', description: 'Harbor registry URL')
+        string(name: 'HARBOR_PROJECT', defaultValue: 'sample-app', description: 'Harbor project name')
+        string(name: 'VAULT_ADDR', defaultValue: 'http://vault.vault.svc.cluster.local:8200', description: 'Vault server address')
+        string(name: 'K8S_REPO', defaultValue: 'https://github.com/chanon-dev/poc-deploy-k8s.git', description: 'Kubernetes manifests repository')
+        string(name: 'K8S_BRANCH', defaultValue: 'main', description: 'Kubernetes manifests branch')
+        string(name: 'ARGOCD_SERVER', defaultValue: 'https://argocd.local', description: 'Argo CD server URL')
+        booleanParam(name: 'SKIP_TESTS', defaultValue: true, description: 'Skip test execution (enable when tests are available)')
+        booleanParam(name: 'TAG_LATEST', defaultValue: false, description: 'Also tag image as latest (not recommended for production)')
+        booleanParam(name: 'FAIL_ON_SCAN_CRITICAL', defaultValue: true, description: 'Fail build if CRITICAL vulnerabilities found')
+    }
+
     agent {
         kubernetes {
             yaml '''
@@ -71,21 +83,20 @@ spec:
         // Application
         APP_NAME = 'webapp'
 
-        // Vault
-        VAULT_ADDR = 'http://vault.vault.svc.cluster.local:8200'
+        // Configuration from parameters
+        VAULT_ADDR = "${params.VAULT_ADDR}"
+        HARBOR_REGISTRY = "${params.HARBOR_REGISTRY}"
+        HARBOR_PROJECT = "${params.HARBOR_PROJECT}"
+        K8S_REPO = "${params.K8S_REPO}"
+        K8S_BRANCH = "${params.K8S_BRANCH}"
+        ARGOCD_SERVER = "${params.ARGOCD_SERVER}"
 
-        // Harbor
-        HARBOR_REGISTRY = 'harbor.local'
-        HARBOR_PROJECT = 'sample-app'
-        IMAGE_NAME = "${HARBOR_REGISTRY}/${HARBOR_PROJECT}/${APP_NAME}"
+        // Image naming
+        IMAGE_NAME = "${params.HARBOR_REGISTRY}/${params.HARBOR_PROJECT}/${APP_NAME}"
 
         // Version
         GIT_COMMIT_SHORT = sh(script: "git rev-parse --short HEAD", returnStdout: true).trim()
         BUILD_TAG = "${env.BUILD_NUMBER}-${GIT_COMMIT_SHORT}"
-
-        // Repository
-        K8S_REPO = 'https://github.com/chanon-dev/poc-deploy-k8s.git'
-        K8S_BRANCH = 'main'
     }
 
     options {
@@ -104,23 +115,26 @@ spec:
                             string(credentialsId: 'vault-role-id', variable: 'VAULT_ROLE_ID'),
                             string(credentialsId: 'vault-secret-id', variable: 'VAULT_SECRET_ID')
                         ]) {
-                            sh '''
-                                apk add --no-cache curl 2>/dev/null || true
+                            retry(3) {
+                                sh '''
+                                    apk add --no-cache curl 2>/dev/null || true
 
-                                RESPONSE=$(curl -s --request POST \
-                                    --data "{\\"role_id\\": \\"${VAULT_ROLE_ID}\\", \\"secret_id\\": \\"${VAULT_SECRET_ID}\\"}" \
-                                    ${VAULT_ADDR}/v1/auth/approle/login)
+                                    echo "Attempting Vault login..."
+                                    RESPONSE=$(curl -s --max-time 10 --request POST \
+                                        --data "{\\"role_id\\": \\"${VAULT_ROLE_ID}\\", \\"secret_id\\": \\"${VAULT_SECRET_ID}\\"}" \
+                                        ${VAULT_ADDR}/v1/auth/approle/login)
 
-                                VAULT_TOKEN=$(echo "$RESPONSE" | grep -o '"client_token":"[^"]*' | cut -d'"' -f4)
+                                    VAULT_TOKEN=$(echo "$RESPONSE" | grep -o '"client_token":"[^"]*' | cut -d'"' -f4)
 
-                                if [ -z "$VAULT_TOKEN" ] || [ "$VAULT_TOKEN" = "null" ]; then
-                                    echo "❌ Vault login failed"
-                                    exit 1
-                                fi
+                                    if [ -z "$VAULT_TOKEN" ] || [ "$VAULT_TOKEN" = "null" ]; then
+                                        echo "❌ Vault login failed. Response: $RESPONSE"
+                                        exit 1
+                                    fi
 
-                                echo "$VAULT_TOKEN" > /workspace/.vault-token
-                                echo "✅ Vault authenticated"
-                            '''
+                                    echo "$VAULT_TOKEN" > /workspace/.vault-token
+                                    echo "✅ Vault authenticated successfully"
+                                '''
+                            }
                         }
                     }
                 }
@@ -133,6 +147,30 @@ spec:
                 script {
                     echo "📦 Building ${APP_NAME}:${BUILD_TAG}"
                     echo "📝 Git commit: ${GIT_COMMIT_SHORT}"
+                }
+            }
+        }
+
+        stage('Run Tests') {
+            when {
+                expression { return !params.SKIP_TESTS }
+            }
+            steps {
+                container('shell') {
+                    script {
+                        echo "🧪 Running tests..."
+
+                        sh '''
+                            cd apps/${APP_NAME}
+
+                            # Uncomment when tests are available:
+                            # npm install
+                            # npm run test
+
+                            echo "⚠️  Tests skipped - enable by setting SKIP_TESTS=false"
+                            echo "✅ Test stage completed"
+                        '''
+                    }
                 }
             }
         }
@@ -168,22 +206,31 @@ spec:
                     script {
                         echo "🏗️  Building ${APP_NAME} with Kaniko..."
 
-                        sh """
-                            /kaniko/executor \
-                                --context=${WORKSPACE}/apps/${APP_NAME} \
-                                --dockerfile=${WORKSPACE}/apps/${APP_NAME}/Dockerfile \
-                                --destination=${IMAGE_NAME}:${BUILD_TAG} \
-                                --destination=${IMAGE_NAME}:latest \
-                                --cache=true \
-                                --cache-ttl=24h \
-                                --compressed-caching=false \
-                                --snapshot-mode=redo \
-                                --log-format=text \
-                                --verbosity=info \
-                                --build-arg NEXT_PUBLIC_API_URL=http://webapi-service:5000
-
-                            echo "✅ Image built and pushed: ${IMAGE_NAME}:${BUILD_TAG}"
+                        def kanikoArgs = """
+                            /kaniko/executor \\
+                                --context=${WORKSPACE}/apps/${APP_NAME} \\
+                                --dockerfile=${WORKSPACE}/apps/${APP_NAME}/Dockerfile \\
+                                --destination=${IMAGE_NAME}:${BUILD_TAG} \\
                         """
+
+                        // Optional: Tag as latest (not recommended for production)
+                        if (params.TAG_LATEST) {
+                            kanikoArgs += "    --destination=${IMAGE_NAME}:latest \\\n"
+                            echo "⚠️  Warning: Tagging as 'latest' is enabled"
+                        }
+
+                        kanikoArgs += """
+                                --cache=true \\
+                                --cache-ttl=24h \\
+                                --compressed-caching=false \\
+                                --snapshot-mode=redo \\
+                                --log-format=text \\
+                                --verbosity=info \\
+                                --build-arg NEXT_PUBLIC_API_URL=http://webapi-service:5000
+                        """
+
+                        sh kanikoArgs
+                        echo "✅ Image built and pushed: ${IMAGE_NAME}:${BUILD_TAG}"
                     }
                 }
             }
@@ -195,13 +242,26 @@ spec:
                     script {
                         echo "🔍 Scanning image for vulnerabilities..."
 
+                        def exitCode = params.FAIL_ON_SCAN_CRITICAL ? '1' : '0'
+                        def scanMode = params.FAIL_ON_SCAN_CRITICAL ? 'ENFORCING' : 'ADVISORY'
+
+                        echo "Security scan mode: ${scanMode}"
+                        echo "Exit code on CRITICAL: ${exitCode}"
+
                         sh """
                             trivy image \
                                 --severity HIGH,CRITICAL \
-                                --exit-code 0 \
+                                --exit-code ${exitCode} \
                                 --no-progress \
                                 --timeout 10m \
-                                ${IMAGE_NAME}:${BUILD_TAG} || echo "⚠️  Vulnerabilities found"
+                                ${IMAGE_NAME}:${BUILD_TAG} || {
+                                    if [ "${exitCode}" = "1" ]; then
+                                        echo "❌ CRITICAL vulnerabilities found - Build FAILED"
+                                        exit 1
+                                    else
+                                        echo "⚠️  Vulnerabilities found but continuing (advisory mode)"
+                                    fi
+                                }
 
                             echo "✅ Security scan completed"
                         """
@@ -252,22 +312,45 @@ Commit: ${GIT_COMMIT_SHORT}" || echo "No changes"
                     script {
                         echo "🚀 Triggering Argo CD sync..."
 
-                        sh '''
-                            apk add --no-cache curl 2>/dev/null || true
-                            export VAULT_TOKEN=$(cat /workspace/.vault-token)
+                        retry(3) {
+                            sh '''
+                                apk add --no-cache curl 2>/dev/null || true
+                                export VAULT_TOKEN=$(cat /workspace/.vault-token)
 
-                            # Get Argo CD token
-                            ARGOCD_TOKEN=$(curl -s -H "X-Vault-Token: ${VAULT_TOKEN}" \
-                                ${VAULT_ADDR}/v1/secret/data/ci/argocd | \
-                                grep -o '"token":"[^"]*' | cut -d'"' -f4)
+                                # Get Argo CD token from Vault
+                                echo "Retrieving Argo CD token from Vault..."
+                                ARGOCD_TOKEN=$(curl -s --max-time 10 \
+                                    -H "X-Vault-Token: ${VAULT_TOKEN}" \
+                                    ${VAULT_ADDR}/v1/secret/data/ci/argocd | \
+                                    grep -o '"token":"[^"]*' | cut -d'"' -f4)
 
-                            # Sync application
-                            curl -k -X POST \
-                                -H "Authorization: Bearer ${ARGOCD_TOKEN}" \
-                                https://argocd.local/api/v1/applications/webapp-dev/sync || echo "⚠️  Sync triggered"
+                                if [ -z "$ARGOCD_TOKEN" ]; then
+                                    echo "❌ Failed to retrieve Argo CD token"
+                                    exit 1
+                                fi
 
-                            echo "✅ Argo CD notified"
-                        '''
+                                # Sync application
+                                # TODO: Replace -k with proper SSL certificate verification
+                                # For production, add CA certificate:
+                                #   curl --cacert /path/to/ca.crt ...
+                                # Or import certificate to system truststore
+                                echo "Triggering Argo CD sync..."
+                                HTTP_CODE=$(curl -k -s -w "%{http_code}" -o /tmp/argocd-response.json \
+                                    --max-time 30 \
+                                    -X POST \
+                                    -H "Authorization: Bearer ${ARGOCD_TOKEN}" \
+                                    ${ARGOCD_SERVER}/api/v1/applications/webapp-dev/sync)
+
+                                if [ "$HTTP_CODE" -ge 200 ] && [ "$HTTP_CODE" -lt 300 ]; then
+                                    echo "✅ Argo CD sync triggered successfully (HTTP ${HTTP_CODE})"
+                                else
+                                    echo "⚠️  Argo CD sync response (HTTP ${HTTP_CODE}):"
+                                    cat /tmp/argocd-response.json || true
+                                fi
+
+                                echo "✅ Argo CD notified"
+                            '''
+                        }
                     }
                 }
             }
@@ -300,21 +383,35 @@ Commit: ${GIT_COMMIT_SHORT}" || echo "No changes"
 
     post {
         success {
-            echo "✅ Webapp deployment successful!"
-            echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
-            echo "📦 Image: ${IMAGE_NAME}:${BUILD_TAG}"
-            echo "🏷️  Also tagged as: ${IMAGE_NAME}:latest"
-            echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+            script {
+                echo "✅ Webapp deployment successful!"
+                echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+                echo "📦 Image: ${IMAGE_NAME}:${BUILD_TAG}"
+
+                if (params.TAG_LATEST) {
+                    echo "🏷️  Also tagged as: ${IMAGE_NAME}:latest"
+                    echo "⚠️  Note: 'latest' tag is not recommended for production"
+                }
+
+                echo "📊 Build metadata recorded in Vault"
+                echo "🔒 Security scan: ${params.FAIL_ON_SCAN_CRITICAL ? 'ENFORCING' : 'ADVISORY'} mode"
+                echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+            }
         }
 
         failure {
             echo "❌ Webapp deployment failed!"
+            echo "Check the logs above for details"
         }
 
         always {
             script {
                 container('shell') {
-                    sh 'rm -f /workspace/.vault-token /workspace/.git-creds 2>/dev/null || true'
+                    sh '''
+                        echo "🧹 Cleaning up sensitive files..."
+                        rm -f /workspace/.vault-token /workspace/.git-creds 2>/dev/null || true
+                        echo "✅ Cleanup completed"
+                    '''
                 }
             }
         }
