@@ -18,9 +18,11 @@
 8. [Install Jenkins](#step-7-install-jenkins)
 9. [Install Argo CD](#step-8-install-argo-cd)
 10. [Install Vault](#step-9-install-vault)
-11. [Access Services](#step-10-access-services)
-12. [Initialize Vault](#step-11-initialize-vault)
-13. [Verify Installation](#step-12-verify-installation)
+11. [Install Harbor](#step-10-install-harbor--ติดตั้ง-harbor-container-registry)
+12. [Access Services](#step-11-access-services--เข้าถึง-services)
+13. [Initialize Vault](#step-12-initialize-vault--เริ่มต้น-vault)
+14. **[Setup External Secrets + Harbor Registry Secret](#step-125-setup-external-secrets--harbor-registry-secret--production-ready)**
+15. [Verify Installation](#step-13-verify-installation--ตรวจสอบการติดตั้ง)
 
 ---
 
@@ -1212,6 +1214,405 @@ kubectl exec -n vault vault-0 -- vault kv put secret/dev/test password=hello123
 
 ---
 
+## Step 12.5: Setup External Secrets + Harbor Registry Secret / Production-Ready
+
+**หมายเหตุ สำคัญ:** Step นี้เป็น **Production Best Practice** - ใช้ External Secrets Operator ดึง credentials จาก Vault อัตโนมัติ
+
+**ข้อดี:**
+
+- ✅ **Centralized Secret Management** - เก็บ credentials ใน Vault เท่านั้น
+- ✅ **Auto-Sync** - Secret ใน Kubernetes อัพเดทอัตโนมัติเมื่อแก้ไขใน Vault
+- ✅ **No Hardcoded Secrets** - ไม่มี credentials ใน Git
+- ✅ **Audit Trail** - Vault บันทึก access ทุกครั้ง
+- ✅ **Production-Ready** - ใช้ได้จริงใน production
+
+---
+
+### 12.5.1 Install External Secrets Operator
+
+```bash
+# เพิ่ม External Secrets Helm repository
+helm repo add external-secrets https://charts.external-secrets.io
+
+# Update repos
+helm repo update
+
+# Install External Secrets Operator
+helm install external-secrets external-secrets/external-secrets \
+  --namespace external-secrets-system \
+  --create-namespace \
+  --set installCRDs=true
+```
+
+**คำอธิบาย:** ติดตั้ง External Secrets Operator ที่จะทำหน้าที่ sync secrets จาก Vault มายัง Kubernetes
+
+**สิ่งที่เกิดขึ้น:**
+
+1. สร้าง namespace `external-secrets-system`
+2. ติดตั้ง External Secrets Operator (3 pods)
+3. ติดตั้ง CRDs: SecretStore, ExternalSecret, ClusterSecretStore
+4. พร้อมใช้งานสำหรับ sync secrets จาก Vault
+
+### 12.5.2 Wait for External Secrets Operator
+
+```bash
+# รอให้ External Secrets pods พร้อม
+kubectl wait --for=condition=ready pod \
+  -l app.kubernetes.io/name=external-secrets \
+  -n external-secrets-system \
+  --timeout=120s
+
+# ตรวจสอบ pods
+kubectl get pods -n external-secrets-system
+
+# ควรเห็น:
+# external-secrets-xxx                   1/1   Running
+# external-secrets-cert-controller-xxx   1/1   Running
+# external-secrets-webhook-xxx           1/1   Running
+```
+
+### 12.5.3 Configure Vault Authentication for External Secrets
+
+**หมายเหตุ:** External Secrets ต้อง authenticate กับ Vault ผ่าน Kubernetes auth method
+
+#### 12.5.3.1 Create Vault Policy
+
+```bash
+# สร้าง policy สำหรับ External Secrets อ่าน Harbor credentials
+cat <<'EOF' | kubectl exec -i -n vault vault-0 -- vault policy write jenkins-external-secrets -
+path "secret/data/ci/harbor" {
+  capabilities = ["read"]
+}
+path "secret/data/ci/*" {
+  capabilities = ["read", "list"]
+}
+EOF
+```
+
+**คำอธิบาย:** Policy นี้อนุญาตให้ External Secrets อ่าน Harbor credentials จาก Vault path `secret/ci/harbor`
+
+#### 12.5.3.2 Create Vault Role
+
+```bash
+# สร้าง Kubernetes role ใน Vault สำหรับ External Secrets
+kubectl exec -n vault vault-0 -- vault write auth/kubernetes/role/jenkins-external-secrets \
+    bound_service_account_names=external-secrets \
+    bound_service_account_namespaces=jenkins \
+    policies=jenkins-external-secrets \
+    ttl=24h
+```
+
+**คำอธิบาย:**
+
+- Role นี้ bind กับ ServiceAccount `external-secrets` ใน namespace `jenkins`
+- ใช้ policy `jenkins-external-secrets` ที่สร้างไว้
+- Token TTL = 24 ชั่วโมง
+
+### 12.5.4 Create ServiceAccount for External Secrets
+
+```bash
+# Apply ServiceAccount
+kubectl apply -f platform/jenkins/external-secrets-sa.yaml
+```
+
+**ไฟล์:** `platform/jenkins/external-secrets-sa.yaml`
+
+```yaml
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: external-secrets
+  namespace: jenkins
+  labels:
+    app: external-secrets
+    component: vault-integration
+```
+
+**คำอธิบาย:** ServiceAccount นี้จะใช้ authenticate กับ Vault
+
+### 12.5.5 Store Harbor Credentials in Vault
+
+```bash
+# เก็บ Harbor registry credentials ใน Vault
+kubectl exec -n vault vault-0 -- vault kv put secret/ci/harbor \
+    registry=harbor.local \
+    username=admin \
+    password=Harbor12345
+```
+
+**คำอธิบาย:** เก็บ credentials 3 ค่า:
+
+- `registry`: Harbor registry URL
+- `username`: Harbor username
+- `password`: Harbor password
+
+**หมายเหตุ:** ใน production ควรใช้ password ที่ปลอดภัยกว่า
+
+**ตรวจสอบ:**
+
+```bash
+# อ่าน secret ที่เก็บไว้
+kubectl exec -n vault vault-0 -- vault kv get secret/ci/harbor
+
+# ควรเห็น:
+# ====== Data ======
+# Key         Value
+# ---         -----
+# password    Harbor12345
+# registry    harbor.local
+# username    admin
+```
+
+### 12.5.6 Create SecretStore (Vault Connection)
+
+```bash
+# Apply SecretStore
+kubectl apply -f platform/jenkins/secret-store.yaml
+```
+
+**ไฟล์:** `platform/jenkins/secret-store.yaml`
+
+```yaml
+apiVersion: external-secrets.io/v1
+kind: SecretStore
+metadata:
+  name: vault-backend
+  namespace: jenkins
+  labels:
+    app: external-secrets
+    component: vault-integration
+spec:
+  provider:
+    vault:
+      server: "http://vault.vault.svc.cluster.local:8200"
+      path: "secret"
+      version: "v2"
+      auth:
+        kubernetes:
+          mountPath: "kubernetes"
+          role: "jenkins-external-secrets"
+          serviceAccountRef:
+            name: "external-secrets"
+```
+
+**คำอธิบาย:**
+
+- SecretStore กำหนดวิธี connect ไปยัง Vault
+- ใช้ Kubernetes auth method
+- ServiceAccount `external-secrets` จะ authenticate กับ Vault role `jenkins-external-secrets`
+
+**ตรวจสอบ:**
+
+```bash
+# ดู SecretStore status
+kubectl get secretstore -n jenkins
+
+# ควบเห็น:
+# NAME            AGE   STATUS   CAPABILITIES   READY
+# vault-backend   10s   Valid    ReadWrite      True
+```
+
+**Status ต้องเป็น `Valid` และ `READY = True`**
+
+### 12.5.7 Create ExternalSecret (Auto-Sync Harbor Secret)
+
+```bash
+# Apply ExternalSecret
+kubectl apply -f platform/jenkins/harbor-external-secret.yaml
+```
+
+**ไฟล์:** `platform/jenkins/harbor-external-secret.yaml`
+
+```yaml
+apiVersion: external-secrets.io/v1
+kind: ExternalSecret
+metadata:
+  name: harbor-registry-secret
+  namespace: jenkins
+  labels:
+    app: jenkins
+    component: registry-credentials
+spec:
+  refreshInterval: 1h
+  secretStoreRef:
+    name: vault-backend
+    kind: SecretStore
+  target:
+    name: harbor-registry-secret
+    creationPolicy: Owner
+    template:
+      type: kubernetes.io/dockerconfigjson
+      data:
+        .dockerconfigjson: |
+          {
+            "auths": {
+              "{{ .registry }}": {
+                "username": "{{ .username }}",
+                "password": "{{ .password }}",
+                "auth": "{{ printf "%s:%s" .username .password | b64enc }}"
+              }
+            }
+          }
+  data:
+  - secretKey: registry
+    remoteRef:
+      key: ci/harbor
+      property: registry
+  - secretKey: username
+    remoteRef:
+      key: ci/harbor
+      property: username
+  - secretKey: password
+    remoteRef:
+      key: ci/harbor
+      property: password
+```
+
+**คำอธิบาय:**
+
+- ExternalSecret ดึงข้อมูลจาก Vault path `secret/ci/harbor`
+- สร้าง Kubernetes Secret ชื่อ `harbor-registry-secret`
+- Type: `kubernetes.io/dockerconfigjson` (Docker registry secret format)
+- Refresh ทุก 1 ชั่วโมง (auto-sync)
+
+**ตรวจสอบ:**
+
+```bash
+# ดู ExternalSecret status
+kubectl get externalsecret -n jenkins
+
+# ควรเห็น:
+# NAME                     STORE           REFRESH INTERVAL   STATUS         READY
+# harbor-registry-secret   vault-backend   1h                 SecretSynced   True
+```
+
+**Status ต้องเป็น `SecretSynced` และ `READY = True`**
+
+### 12.5.8 Verify Secret Sync
+
+```bash
+# ตรวจสอบว่า Kubernetes Secret ถูกสร้างแล้ว
+kubectl get secret harbor-registry-secret -n jenkins
+
+# ควรเห็น:
+# NAME                     TYPE                             DATA   AGE
+# harbor-registry-secret   kubernetes.io/dockerconfigjson   1      30s
+
+# ตรวจสอบ secret type
+kubectl get secret harbor-registry-secret -n jenkins -o jsonpath='{.type}'
+# ควรได้: kubernetes.io/dockerconfigjson
+
+# ตรวจสอบ secret content (decode)
+kubectl get secret harbor-registry-secret -n jenkins \
+  -o jsonpath='{.data.\.dockerconfigjson}' | base64 -d | jq
+
+# ควรเห็น:
+# {
+#   "auths": {
+#     "harbor.local": {
+#       "username": "admin",
+#       "password": "Harbor12345",
+#       "auth": "YWRtaW46SGFyYm9yMTIzNDU="
+#     }
+#   }
+# }
+```
+
+**✅ Secret ถูกสร้างและ sync จาก Vault สำเร็จ!**
+
+### 12.5.9 Test Jenkins Pipeline with Harbor Secret
+
+ตอนนี้ Jenkins pipeline สามารถใช้ secret นี้ได้แล้ว!
+
+**ตัวอย่างการใช้งานใน Jenkinsfile:**
+
+```groovy
+// ใน Jenkinsfile pod template:
+volumes:
+- name: kaniko-secret
+  secret:
+    secretName: harbor-registry-secret
+    items:
+    - key: .dockerconfigjson
+      path: config.json
+
+// Kaniko จะใช้ secret นี้ push image ไปยัง Harbor
+```
+
+**ดูตัวอย่างเต็ม:** [apps/webapi/Jenkinsfile](../apps/webapi/Jenkinsfile)
+
+---
+
+### 12.5.10 Summary - External Secrets Architecture
+
+```
+┌─────────────────────────────────────────────────────────────┐
+│                         Vault                               │
+│  Path: secret/ci/harbor                                     │
+│  Data: {registry, username, password}                       │
+└──────────────────┬──────────────────────────────────────────┘
+                   │
+                   │ (Kubernetes Auth)
+                   │ Role: jenkins-external-secrets
+                   │ Policy: read secret/ci/harbor
+                   │
+┌──────────────────▼──────────────────────────────────────────┐
+│           External Secrets Operator                         │
+│  - SecretStore (vault-backend)                              │
+│  - ExternalSecret (harbor-registry-secret)                  │
+│  - ServiceAccount (external-secrets)                        │
+└──────────────────┬──────────────────────────────────────────┘
+                   │
+                   │ (Sync every 1h)
+                   │ Creates/Updates
+                   │
+┌──────────────────▼──────────────────────────────────────────┐
+│        Kubernetes Secret (jenkins namespace)                │
+│  Name: harbor-registry-secret                               │
+│  Type: kubernetes.io/dockerconfigjson                       │
+│  Used by: Jenkins agent pods (Kaniko)                       │
+└─────────────────────────────────────────────────────────────┘
+```
+
+**ข้อดี:**
+
+- ✅ **Single Source of Truth** - Vault เป็นที่เก็บ credentials เพียงแห่งเดียว
+- ✅ **Auto-Update** - แก้ไขใน Vault → Secret ใน K8s อัพเดทอัตโนมัติ
+- ✅ **No Manual Secret Creation** - ไม่ต้อง `kubectl create secret` เอง
+- ✅ **GitOps-Friendly** - ExternalSecret manifests เก็บใน Git ได้
+- ✅ **Secure** - Credentials ไม่ hardcode ใน Git
+- ✅ **Auditable** - Vault audit log ทุก access
+
+---
+
+**🎯 Production Tips:**
+
+1. **Rotate Credentials:** แก้ไขใน Vault → Secret sync อัตโนมัติ
+
+   ```bash
+   kubectl exec -n vault vault-0 -- vault kv put secret/ci/harbor \
+       registry=harbor.local \
+       username=admin \
+       password=NEW_SECURE_PASSWORD
+   ```
+
+2. **Monitor Sync Status:**
+
+   ```bash
+   # ดู ExternalSecret events
+   kubectl describe externalsecret harbor-registry-secret -n jenkins
+
+   # ดู External Secrets Operator logs
+   kubectl logs -n external-secrets-system -l app.kubernetes.io/name=external-secrets
+   ```
+
+3. **Backup:** เก็บไฟล์เหล่านี้ใน Git:
+   - `platform/jenkins/external-secrets-sa.yaml`
+   - `platform/jenkins/secret-store.yaml`
+   - `platform/jenkins/harbor-external-secret.yaml`
+
+---
+
 ## Step 13: Verify Installation / ตรวจสอบการติดตั้ง
 
 ### 13.1 Check All Pods
@@ -1225,27 +1626,31 @@ kubectl get pods -n jenkins
 kubectl get pods -n argocd
 kubectl get pods -n vault
 kubectl get pods -n harbor
+kubectl get pods -n external-secrets-system
 kubectl get pods -n dev
 ```
 
 **ควรเห็น:**
 
 ```
-NAMESPACE   NAME                                    READY   STATUS
-jenkins     jenkins-0                               2/2     Running
-argocd      argocd-server-xxx                       1/1     Running
-argocd      argocd-application-controller-xxx       1/1     Running
-argocd      argocd-repo-server-xxx                  1/1     Running
-argocd      argocd-redis-xxx                        1/1     Running
-vault       vault-0                                 1/1     Running
-vault       vault-agent-injector-xxx                1/1     Running
-harbor      harbor-core-xxx                         1/1     Running
-harbor      harbor-portal-xxx                       1/1     Running
-harbor      harbor-registry-xxx                     1/1     Running
-harbor      harbor-database-0                       1/1     Running
-harbor      harbor-redis-0                          1/1     Running
-harbor      harbor-jobservice-xxx                   1/1     Running
-harbor      harbor-trivy-xxx                        1/1     Running
+NAMESPACE                   NAME                                         READY   STATUS
+jenkins                     jenkins-0                                    2/2     Running
+argocd                      argocd-server-xxx                            1/1     Running
+argocd                      argocd-application-controller-xxx            1/1     Running
+argocd                      argocd-repo-server-xxx                       1/1     Running
+argocd                      argocd-redis-xxx                             1/1     Running
+vault                       vault-0                                      1/1     Running
+vault                       vault-agent-injector-xxx                     1/1     Running
+harbor                      harbor-core-xxx                              1/1     Running
+harbor                      harbor-portal-xxx                            1/1     Running
+harbor                      harbor-registry-xxx                          1/1     Running
+harbor                      harbor-database-0                            1/1     Running
+harbor                      harbor-redis-0                               1/1     Running
+harbor                      harbor-jobservice-xxx                        1/1     Running
+harbor                      harbor-trivy-xxx                             1/1     Running
+external-secrets-system     external-secrets-xxx                         1/1     Running
+external-secrets-system     external-secrets-cert-controller-xxx         1/1     Running
+external-secrets-system     external-secrets-webhook-xxx                 1/1     Running
 ```
 
 **หมายเหตุ:** ถ้าติดตั้ง Ingress Controller จะเห็น ingress-nginx pods ด้วย
@@ -1321,6 +1726,56 @@ kubectl exec -n vault vault-0 -- \
 
 # ควรเห็น password=hello123
 ```
+
+### 13.6.5 Test External Secrets + Harbor Registry Secret
+
+```bash
+# ตรวจสอบ External Secrets Operator
+kubectl get pods -n external-secrets-system
+
+# ควรเห็น 3 pods Running:
+# external-secrets-xxx
+# external-secrets-cert-controller-xxx
+# external-secrets-webhook-xxx
+
+# ตรวจสอบ SecretStore
+kubectl get secretstore -n jenkins
+
+# ควรเห็น:
+# NAME            AGE   STATUS   CAPABILITIES   READY
+# vault-backend   xxx   Valid    ReadWrite      True
+
+# ตรวจสอบ ExternalSecret
+kubectl get externalsecret -n jenkins
+
+# ควรเห็น:
+# NAME                     STORE           REFRESH INTERVAL   STATUS         READY
+# harbor-registry-secret   vault-backend   1h                 SecretSynced   True
+
+# ตรวจสอบว่า Kubernetes Secret ถูกสร้างจาก Vault
+kubectl get secret harbor-registry-secret -n jenkins
+
+# ควรเห็น:
+# NAME                     TYPE                             DATA   AGE
+# harbor-registry-secret   kubernetes.io/dockerconfigjson   1      xxx
+
+# Verify secret content
+kubectl get secret harbor-registry-secret -n jenkins \
+  -o jsonpath='{.data.\.dockerconfigjson}' | base64 -d | jq
+
+# ควรเห็น Harbor credentials จาก Vault:
+# {
+#   "auths": {
+#     "harbor.local": {
+#       "username": "admin",
+#       "password": "Harbor12345",
+#       "auth": "YWRtaW46SGFyYm9yMTIzNDU="
+#     }
+#   }
+# }
+```
+
+**✅ External Secrets ทำงานสำเร็จ - Secret sync จาก Vault มายัง Kubernetes อัตโนมัติ!**
 
 ### 13.7 Test Harbor
 
