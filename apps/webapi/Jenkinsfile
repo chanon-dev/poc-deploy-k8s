@@ -70,7 +70,7 @@ spec:
       mountPath: /kaniko/.docker
 
   - name: shell
-    image: alpine:3.19
+    image: bitnami/git:2.47.1
     command: [cat]
     tty: true
     securityContext:
@@ -154,8 +154,6 @@ spec:
                         ]) {
                             retry(3) {
                                 sh '''
-                                    apk add --no-cache curl
-
                                     echo "Attempting Vault login..."
                                     RESPONSE=$(curl -s --max-time 10 --request POST \
                                         --data "{\\"role_id\\": \\"${VAULT_ROLE_ID}\\", \\"secret_id\\": \\"${VAULT_SECRET_ID}\\"}" \
@@ -220,7 +218,6 @@ spec:
                         echo "🔑 Reading secrets from Vault..."
 
                         sh '''
-                            apk add --no-cache curl
                             export VAULT_TOKEN=$(cat /workspace/.vault-token)
 
                             # GitHub credentials
@@ -338,7 +335,6 @@ spec:
                         echo "📝 Updating Kubernetes manifests..."
 
                         sh '''
-                            apk add --no-cache git curl
                             source /workspace/.git-creds
 
                             git clone ${K8S_REPO} k8s-manifests
@@ -376,7 +372,6 @@ Commit: ${GIT_COMMIT_SHORT}" || echo "No changes"
 
                         retry(3) {
                             sh '''
-                                apk add --no-cache curl
                                 export VAULT_TOKEN=$(cat /workspace/.vault-token)
 
                                 # Get Argo CD token from Vault
@@ -425,7 +420,6 @@ Commit: ${GIT_COMMIT_SHORT}" || echo "No changes"
                         echo "📊 Recording build metadata..."
 
                         sh '''
-                            apk add --no-cache curl
                             export VAULT_TOKEN=$(cat /workspace/.vault-token)
 
                             curl -s -H "X-Vault-Token: ${VAULT_TOKEN}" \
