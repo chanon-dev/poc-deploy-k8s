@@ -123,117 +123,57 @@ pipeline {
                         echo "GIT_USERNAME=${GIT_USERNAME}" > ${WORKSPACE}/.git-creds
                         echo "GIT_TOKEN=${GIT_TOKEN}" >> ${WORKSPACE}/.git-creds
 
-                        # Harbor credentials
-                        RESPONSE=$(curl -s -H "X-Vault-Token: ${VAULT_TOKEN}" ${VAULT_ADDR}/v1/secret/data/ci/harbor)
-                        HARBOR_USERNAME=$(echo "$RESPONSE" | grep -o '"username":"[^"]*' | cut -d'"' -f4)
-                        HARBOR_PASSWORD=$(echo "$RESPONSE" | grep -o '"password":"[^"]*' | cut -d'"' -f4)
-                        HARBOR_REGISTRY_URL=$(echo "$RESPONSE" | grep -o '"registry":"[^"]*' | cut -d'"' -f4)
-
-                        # Create Docker config.json for Kaniko
-                        mkdir -p ${WORKSPACE}/.docker
-                        cat > ${WORKSPACE}/.docker/config.json <<EOF
-{
-  "auths": {
-    "${HARBOR_REGISTRY_URL}": {
-      "username": "${HARBOR_USERNAME}",
-      "password": "${HARBOR_PASSWORD}",
-      "auth": "$(echo -n ${HARBOR_USERNAME}:${HARBOR_PASSWORD} | base64)"
-    }
-  }
-}
-EOF
-
-                        echo "✅ Secrets loaded and Docker config created"
+                        echo "✅ Secrets loaded"
                     '''
                 }
             }
         }
 
         stage('Build with Kaniko') {
-            steps {
-                script {
-                    echo "🏗️  Building ${APP_NAME} with Kaniko..."
-
-                    sh '''
-                        # Create kaniko build pod
-                        POD_NAME="kaniko-build-${BUILD_NUMBER}"
-
-                        # Create ConfigMap with Docker config
-                        kubectl create configmap kaniko-docker-config-${BUILD_NUMBER} \
-                            --from-file=${WORKSPACE}/.docker/config.json \
-                            -n jenkins \
-                            --dry-run=client -o yaml | kubectl apply -f -
-
-                        # Create build context tar
-                        cd ${WORKSPACE}/apps/${APP_NAME}
-                        tar -czf ${WORKSPACE}/build-context.tar.gz .
-
-                        # Create ConfigMap with build context
-                        kubectl create configmap kaniko-context-${BUILD_NUMBER} \
-                            --from-file=${WORKSPACE}/build-context.tar.gz \
-                            -n jenkins \
-                            --dry-run=client -o yaml | kubectl apply -f -
-
-                        # Run Kaniko build pod
-                        cat <<EOF | kubectl apply -f -
+            agent {
+                kubernetes {
+                    yaml '''
 apiVersion: v1
 kind: Pod
-metadata:
-  name: ${POD_NAME}
-  namespace: jenkins
 spec:
-  restartPolicy: Never
   containers:
   - name: kaniko
-    image: gcr.io/kaniko-project/executor:v1.23.2
-    args:
-    - "--dockerfile=Dockerfile"
-    - "--context=tar:///workspace/build-context.tar.gz"
-    - "--destination=${IMAGE_NAME}:${BUILD_TAG}"
-    - "--cache=true"
-    - "--cache-ttl=24h"
+    image: gcr.io/kaniko-project/executor:v1.23.2-debug
+    command: ["/busybox/cat"]
+    tty: true
     volumeMounts:
-    - name: docker-config
-      mountPath: /kaniko/.docker/
-    - name: build-context
-      mountPath: /workspace/
+    - name: kaniko-secret
+      mountPath: /kaniko/.docker
   volumes:
-  - name: docker-config
-    configMap:
-      name: kaniko-docker-config-${BUILD_NUMBER}
-  - name: build-context
-    configMap:
-      name: kaniko-context-${BUILD_NUMBER}
-EOF
+  - name: kaniko-secret
+    secret:
+      secretName: harbor-registry-secret
+      items:
+      - key: .dockerconfigjson
+        path: config.json
+'''
+                }
+            }
+            steps {
+                container('kaniko') {
+                    script {
+                        echo "🏗️  Building ${APP_NAME} with Kaniko..."
 
-                        echo "Waiting for Kaniko build to complete..."
-                        kubectl wait --for=condition=Ready pod/${POD_NAME} -n jenkins --timeout=60s || true
+                        sh '''
+                            /kaniko/executor \
+                                --context=${WORKSPACE}/apps/${APP_NAME} \
+                                --dockerfile=${WORKSPACE}/apps/${APP_NAME}/Dockerfile \
+                                --destination=${IMAGE_NAME}:${BUILD_TAG} \
+                                --cache=true \
+                                --cache-ttl=24h \
+                                --compressed-caching=false \
+                                --snapshot-mode=redo \
+                                --log-format=text \
+                                --verbosity=info
 
-                        # Wait for completion (max 10 minutes)
-                        for i in $(seq 1 120); do
-                            STATUS=$(kubectl get pod ${POD_NAME} -n jenkins -o jsonpath='{.status.phase}')
-                            if [ "$STATUS" = "Succeeded" ]; then
-                                echo "✅ Kaniko build succeeded"
-                                kubectl logs ${POD_NAME} -n jenkins
-                                break
-                            elif [ "$STATUS" = "Failed" ]; then
-                                echo "❌ Kaniko build failed"
-                                kubectl logs ${POD_NAME} -n jenkins
-                                kubectl delete pod ${POD_NAME} -n jenkins --ignore-not-found
-                                kubectl delete configmap kaniko-docker-config-${BUILD_NUMBER} -n jenkins --ignore-not-found
-                                kubectl delete configmap kaniko-context-${BUILD_NUMBER} -n jenkins --ignore-not-found
-                                exit 1
-                            fi
-                            sleep 5
-                        done
-
-                        # Cleanup
-                        kubectl delete pod ${POD_NAME} -n jenkins --ignore-not-found
-                        kubectl delete configmap kaniko-docker-config-${BUILD_NUMBER} -n jenkins --ignore-not-found
-                        kubectl delete configmap kaniko-context-${BUILD_NUMBER} -n jenkins --ignore-not-found
-
-                        echo "✅ Image built and pushed: ${IMAGE_NAME}:${BUILD_TAG}"
-                    '''
+                            echo "✅ Image built and pushed: ${IMAGE_NAME}:${BUILD_TAG}"
+                        '''
+                    }
                 }
             }
         }
@@ -374,7 +314,7 @@ Commit: ${GIT_COMMIT_SHORT}" || echo "No changes"
             script {
                 sh '''
                     echo "🧹 Cleaning up sensitive files..."
-                    rm -rf ${WORKSPACE}/.vault-token ${WORKSPACE}/.git-creds ${WORKSPACE}/.docker ${WORKSPACE}/build-context.tar.gz 2>/dev/null || true
+                    rm -rf ${WORKSPACE}/.vault-token ${WORKSPACE}/.git-creds 2>/dev/null || true
                     echo "✅ Cleanup completed"
                 '''
             }
