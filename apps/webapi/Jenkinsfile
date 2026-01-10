@@ -28,9 +28,6 @@ spec:
   serviceAccountName: jenkins
   # priorityClassName: ci-cd-high-priority  # Temporarily disabled until deployed
   securityContext:
-    runAsNonRoot: true
-    runAsUser: 1000
-    fsGroup: 1000
     seccompProfile:
       type: RuntimeDefault
   containers:
