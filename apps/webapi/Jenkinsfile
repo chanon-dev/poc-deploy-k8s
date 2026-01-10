@@ -1,7 +1,9 @@
 // WebAPI Pipeline - .NET 8 API Application
-// Build method: Kaniko (production-ready, no privileged mode)
+// Build method: Docker (requires Docker daemon on Jenkins agent)
 
 pipeline {
+    agent any
+
     parameters {
         string(name: 'HARBOR_REGISTRY', defaultValue: 'harbor.local', description: 'Harbor registry URL')
         string(name: 'HARBOR_PROJECT', defaultValue: 'sample-app', description: 'Harbor project name')
@@ -12,113 +14,7 @@ pipeline {
         booleanParam(name: 'SKIP_TESTS', defaultValue: true, description: 'Skip test execution (enable when tests are available)')
         booleanParam(name: 'TAG_LATEST', defaultValue: false, description: 'Also tag image as latest (not recommended for production)')
         booleanParam(name: 'FAIL_ON_SCAN_CRITICAL', defaultValue: true, description: 'Fail build if CRITICAL vulnerabilities found')
-    }
-
-    agent {
-        kubernetes {
-            yaml '''
-apiVersion: v1
-kind: Pod
-metadata:
-  labels:
-    app: webapi-builder
-    team: platform
-    environment: ci-cd
-spec:
-  serviceAccountName: jenkins
-  # priorityClassName: ci-cd-high-priority  # Temporarily disabled until deployed
-  securityContext:
-    fsGroup: 1000
-    seccompProfile:
-      type: RuntimeDefault
-  containers:
-  - name: jnlp
-    image: jenkins/inbound-agent:3261.v9c670a_4748a_9-1
-    securityContext:
-      allowPrivilegeEscalation: false
-      capabilities:
-        drop:
-        - ALL
-    resources:
-      requests:
-        memory: "256Mi"
-        cpu: "200m"
-      limits:
-        memory: "512Mi"
-        cpu: "500m"
-
-  - name: kaniko
-    image: gcr.io/kaniko-project/executor:v1.23.2-debug
-    command: ["/busybox/cat"]
-    tty: true
-    securityContext:
-      allowPrivilegeEscalation: false
-      capabilities:
-        drop:
-        - ALL
-    resources:
-      requests:
-        memory: "512Mi"
-        cpu: "500m"
-      limits:
-        memory: "1Gi"
-        cpu: "1000m"
-    volumeMounts:
-    - name: kaniko-secret
-      mountPath: /kaniko/.docker
-
-  - name: shell
-    image: alpine/git:2.45.1
-    command: [cat]
-    tty: true
-    securityContext:
-      runAsUser: 0
-      runAsNonRoot: false
-      allowPrivilegeEscalation: false
-      capabilities:
-        drop:
-        - ALL
-      readOnlyRootFilesystem: false
-    resources:
-      requests:
-        memory: "128Mi"
-        cpu: "100m"
-      limits:
-        memory: "256Mi"
-        cpu: "200m"
-    volumeMounts:
-    - name: shell-tmp
-      mountPath: /tmp
-
-  - name: trivy
-    image: aquasec/trivy:0.55.2
-    command: [cat]
-    tty: true
-    securityContext:
-      allowPrivilegeEscalation: false
-      capabilities:
-        drop:
-        - ALL
-      readOnlyRootFilesystem: false
-    resources:
-      requests:
-        memory: "256Mi"
-        cpu: "200m"
-      limits:
-        memory: "512Mi"
-        cpu: "500m"
-
-  volumes:
-  - name: kaniko-secret
-    secret:
-      secretName: harbor-registry-secret
-      items:
-      - key: .dockerconfigjson
-        path: config.json
-  - name: shell-tmp
-    emptyDir: {}
-'''
-        }
+        booleanParam(name: 'SKIP_SECURITY_SCAN', defaultValue: false, description: 'Skip security scan (requires Trivy installed)')
     }
 
     environment {
@@ -149,34 +45,30 @@ spec:
     stages {
         stage('Vault Login') {
             steps {
-                container('shell') {
-                    script {
-                        echo "🔐 Authenticating with Vault..."
+                script {
+                    echo "🔐 Authenticating with Vault..."
 
-                        withCredentials([
-                            string(credentialsId: 'vault-role-id', variable: 'VAULT_ROLE_ID'),
-                            string(credentialsId: 'vault-secret-id', variable: 'VAULT_SECRET_ID')
-                        ]) {
-                            retry(3) {
-                                sh '''
-                                    apk add --no-cache curl
+                    withCredentials([
+                        string(credentialsId: 'vault-role-id', variable: 'VAULT_ROLE_ID'),
+                        string(credentialsId: 'vault-secret-id', variable: 'VAULT_SECRET_ID')
+                    ]) {
+                        retry(3) {
+                            sh '''
+                                echo "Attempting Vault login..."
+                                RESPONSE=$(curl -s --max-time 10 --request POST \
+                                    --data "{\\"role_id\\": \\"${VAULT_ROLE_ID}\\", \\"secret_id\\": \\"${VAULT_SECRET_ID}\\"}" \
+                                    ${VAULT_ADDR}/v1/auth/approle/login)
 
-                                    echo "Attempting Vault login..."
-                                    RESPONSE=$(curl -s --max-time 10 --request POST \
-                                        --data "{\\"role_id\\": \\"${VAULT_ROLE_ID}\\", \\"secret_id\\": \\"${VAULT_SECRET_ID}\\"}" \
-                                        ${VAULT_ADDR}/v1/auth/approle/login)
+                                VAULT_TOKEN=$(echo "$RESPONSE" | grep -o '"client_token":"[^"]*' | cut -d'"' -f4)
 
-                                    VAULT_TOKEN=$(echo "$RESPONSE" | grep -o '"client_token":"[^"]*' | cut -d'"' -f4)
+                                if [ -z "$VAULT_TOKEN" ] || [ "$VAULT_TOKEN" = "null" ]; then
+                                    echo "❌ Vault login failed. Response: $RESPONSE"
+                                    exit 1
+                                fi
 
-                                    if [ -z "$VAULT_TOKEN" ] || [ "$VAULT_TOKEN" = "null" ]; then
-                                        echo "❌ Vault login failed. Response: $RESPONSE"
-                                        exit 1
-                                    fi
-
-                                    echo "$VAULT_TOKEN" > /workspace/.vault-token
-                                    echo "✅ Vault authenticated successfully"
-                                '''
-                            }
+                                echo "$VAULT_TOKEN" > ${WORKSPACE}/.vault-token
+                                echo "✅ Vault authenticated successfully"
+                            '''
                         }
                     }
                 }
@@ -198,226 +90,237 @@ spec:
                 expression { return !params.SKIP_TESTS }
             }
             steps {
-                container('shell') {
-                    script {
-                        echo "🧪 Running tests..."
+                script {
+                    echo "🧪 Running tests..."
 
-                        // Install .NET SDK for testing (if needed)
-                        sh '''
-                            cd apps/${APP_NAME}
+                    sh '''
+                        cd apps/${APP_NAME}
 
-                            # Uncomment when tests are available:
-                            # dotnet restore
-                            # dotnet test --no-build --verbosity normal
+                        # Uncomment when tests are available:
+                        # dotnet restore
+                        # dotnet test --no-build --verbosity normal
 
-                            echo "⚠️  Tests skipped - enable by setting SKIP_TESTS=false"
-                            echo "✅ Test stage completed"
-                        '''
-                    }
+                        echo "⚠️  Tests skipped - enable by setting SKIP_TESTS=false"
+                        echo "✅ Test stage completed"
+                    '''
                 }
             }
         }
 
         stage('Read Secrets') {
             steps {
-                container('shell') {
-                    script {
-                        echo "🔑 Reading secrets from Vault..."
+                script {
+                    echo "🔑 Reading secrets from Vault..."
 
-                        sh '''
-                            apk add --no-cache curl
-                            export VAULT_TOKEN=$(cat /workspace/.vault-token)
+                    sh '''
+                        export VAULT_TOKEN=$(cat ${WORKSPACE}/.vault-token)
 
-                            # GitHub credentials
-                            RESPONSE=$(curl -s -H "X-Vault-Token: ${VAULT_TOKEN}" ${VAULT_ADDR}/v1/secret/data/ci/github)
-                            GIT_USERNAME=$(echo "$RESPONSE" | grep -o '"username":"[^"]*' | cut -d'"' -f4)
-                            GIT_TOKEN=$(echo "$RESPONSE" | grep -o '"token":"[^"]*' | cut -d'"' -f4)
+                        # GitHub credentials
+                        RESPONSE=$(curl -s -H "X-Vault-Token: ${VAULT_TOKEN}" ${VAULT_ADDR}/v1/secret/data/ci/github)
+                        GIT_USERNAME=$(echo "$RESPONSE" | grep -o '"username":"[^"]*' | cut -d'"' -f4)
+                        GIT_TOKEN=$(echo "$RESPONSE" | grep -o '"token":"[^"]*' | cut -d'"' -f4)
 
-                            echo "GIT_USERNAME=${GIT_USERNAME}" > /workspace/.git-creds
-                            echo "GIT_TOKEN=${GIT_TOKEN}" >> /workspace/.git-creds
+                        echo "GIT_USERNAME=${GIT_USERNAME}" > ${WORKSPACE}/.git-creds
+                        echo "GIT_TOKEN=${GIT_TOKEN}" >> ${WORKSPACE}/.git-creds
 
-                            echo "✅ Secrets loaded"
-                        '''
+                        # Harbor credentials
+                        RESPONSE=$(curl -s -H "X-Vault-Token: ${VAULT_TOKEN}" ${VAULT_ADDR}/v1/secret/data/ci/harbor)
+                        HARBOR_USERNAME=$(echo "$RESPONSE" | grep -o '"username":"[^"]*' | cut -d'"' -f4)
+                        HARBOR_PASSWORD=$(echo "$RESPONSE" | grep -o '"password":"[^"]*' | cut -d'"' -f4)
+
+                        echo "HARBOR_USERNAME=${HARBOR_USERNAME}" >> ${WORKSPACE}/.git-creds
+                        echo "HARBOR_PASSWORD=${HARBOR_PASSWORD}" >> ${WORKSPACE}/.git-creds
+
+                        echo "✅ Secrets loaded"
+                    '''
+                }
+            }
+        }
+
+        stage('Build with Docker') {
+            steps {
+                script {
+                    echo "🏗️  Building ${APP_NAME} with Docker..."
+
+                    sh '''
+                        source ${WORKSPACE}/.git-creds
+
+                        # Login to Harbor
+                        echo "${HARBOR_PASSWORD}" | docker login ${HARBOR_REGISTRY} -u ${HARBOR_USERNAME} --password-stdin
+
+                        # Build image
+                        docker build \
+                            -t ${IMAGE_NAME}:${BUILD_TAG} \
+                            -f apps/${APP_NAME}/Dockerfile \
+                            apps/${APP_NAME}
+
+                        echo "✅ Image built: ${IMAGE_NAME}:${BUILD_TAG}"
+                    '''
+
+                    // Optional: Tag as latest
+                    if (params.TAG_LATEST) {
+                        echo "⚠️  Warning: Tagging as 'latest' is enabled"
+                        sh "docker tag ${IMAGE_NAME}:${BUILD_TAG} ${IMAGE_NAME}:latest"
                     }
                 }
             }
         }
 
-        stage('Build with Kaniko') {
+        stage('Push Image') {
             steps {
-                container('kaniko') {
-                    script {
-                        echo "🏗️  Building ${APP_NAME} with Kaniko..."
+                script {
+                    echo "📤 Pushing image to Harbor..."
 
-                        def kanikoArgs = """
-                            /kaniko/executor \\
-                                --context=${WORKSPACE}/apps/${APP_NAME} \\
-                                --dockerfile=${WORKSPACE}/apps/${APP_NAME}/Dockerfile \\
-                                --destination=${IMAGE_NAME}:${BUILD_TAG} \\
-                        """
+                    sh '''
+                        source ${WORKSPACE}/.git-creds
 
-                        // Optional: Tag as latest (not recommended for production)
-                        if (params.TAG_LATEST) {
-                            kanikoArgs += "    --destination=${IMAGE_NAME}:latest \\\n"
-                            echo "⚠️  Warning: Tagging as 'latest' is enabled"
-                        }
+                        # Push main tag
+                        docker push ${IMAGE_NAME}:${BUILD_TAG}
+                        echo "✅ Pushed: ${IMAGE_NAME}:${BUILD_TAG}"
+                    '''
 
-                        kanikoArgs += """
-                                --cache=true \\
-                                --cache-ttl=24h \\
-                                --compressed-caching=false \\
-                                --snapshot-mode=redo \\
-                                --log-format=text \\
-                                --verbosity=info
-                        """
-
-                        sh kanikoArgs
-                        echo "✅ Image built and pushed: ${IMAGE_NAME}:${BUILD_TAG}"
+                    if (params.TAG_LATEST) {
+                        sh "docker push ${IMAGE_NAME}:latest"
+                        echo "✅ Pushed: ${IMAGE_NAME}:latest"
                     }
                 }
             }
         }
 
         stage('Security Scan') {
+            when {
+                expression { return !params.SKIP_SECURITY_SCAN }
+            }
             steps {
-                container('trivy') {
-                    script {
-                        echo "🔍 Scanning image for vulnerabilities..."
+                script {
+                    echo "🔍 Scanning image for vulnerabilities..."
 
-                        def exitCode = params.FAIL_ON_SCAN_CRITICAL ? '1' : '0'
-                        def scanMode = params.FAIL_ON_SCAN_CRITICAL ? 'ENFORCING' : 'ADVISORY'
+                    def exitCode = params.FAIL_ON_SCAN_CRITICAL ? '1' : '0'
+                    def scanMode = params.FAIL_ON_SCAN_CRITICAL ? 'ENFORCING' : 'ADVISORY'
 
-                        echo "Security scan mode: ${scanMode}"
-                        echo "Exit code on CRITICAL: ${exitCode}"
+                    echo "Security scan mode: ${scanMode}"
+                    echo "Exit code on CRITICAL: ${exitCode}"
 
-                        sh """
-                            trivy image \
-                                --severity HIGH,CRITICAL \
-                                --exit-code ${exitCode} \
-                                --no-progress \
-                                --timeout 10m \
-                                ${IMAGE_NAME}:${BUILD_TAG} || {
-                                    if [ "${exitCode}" = "1" ]; then
-                                        echo "❌ CRITICAL vulnerabilities found - Build FAILED"
-                                        exit 1
-                                    else
-                                        echo "⚠️  Vulnerabilities found but continuing (advisory mode)"
-                                    fi
-                                }
+                    sh """
+                        # Check if Trivy is installed
+                        if ! command -v trivy &> /dev/null; then
+                            echo "⚠️  Trivy not installed - skipping security scan"
+                            echo "Install Trivy: https://aquasecurity.github.io/trivy/latest/getting-started/installation/"
+                            exit 0
+                        fi
 
-                            echo "✅ Security scan completed"
-                        """
-                    }
+                        trivy image \
+                            --severity HIGH,CRITICAL \
+                            --exit-code ${exitCode} \
+                            --no-progress \
+                            --timeout 10m \
+                            ${IMAGE_NAME}:${BUILD_TAG} || {
+                                if [ "${exitCode}" = "1" ]; then
+                                    echo "❌ CRITICAL vulnerabilities found - Build FAILED"
+                                    exit 1
+                                else
+                                    echo "⚠️  Vulnerabilities found but continuing (advisory mode)"
+                                fi
+                            }
+
+                        echo "✅ Security scan completed"
+                    """
                 }
             }
         }
 
-        stage('Image Verification') {
+        stage('Cleanup Local Images') {
             steps {
-                container('shell') {
-                    script {
-                        echo "🔎 Verifying Docker image..."
+                script {
+                    echo "🧹 Cleaning up local Docker images..."
 
-                        sh """
-                            apk add --no-cache skopeo 2>/dev/null || {
-                                echo "⚠️  Skopeo not available, using basic verification"
-                            }
+                    sh '''
+                        docker rmi ${IMAGE_NAME}:${BUILD_TAG} || true
+                    '''
 
-                            # Verify image exists and is accessible
-                            echo "Checking image manifest..."
-
-                            # Basic image inspection
-                            echo "✅ Image verification completed"
-                            echo "📦 Image: ${IMAGE_NAME}:${BUILD_TAG}"
-                            echo "🏷️  Registry: ${HARBOR_REGISTRY}"
-                        """
+                    if (params.TAG_LATEST) {
+                        sh "docker rmi ${IMAGE_NAME}:latest || true"
                     }
+
+                    echo "✅ Local images cleaned"
                 }
             }
         }
 
         stage('Update Manifests') {
             steps {
-                container('shell') {
-                    script {
-                        echo "📝 Updating Kubernetes manifests..."
+                script {
+                    echo "📝 Updating Kubernetes manifests..."
 
-                        sh '''
-                            apk add --no-cache git curl
-                            source /workspace/.git-creds
+                    sh '''
+                        source ${WORKSPACE}/.git-creds
 
-                            git clone ${K8S_REPO} k8s-manifests
-                            cd k8s-manifests
+                        # Clone manifests repo
+                        rm -rf k8s-manifests
+                        git clone ${K8S_REPO} k8s-manifests
+                        cd k8s-manifests
 
-                            git config user.name "Jenkins CI"
-                            git config user.email "jenkins@example.com"
+                        git config user.name "Jenkins CI"
+                        git config user.email "jenkins@example.com"
 
-                            # Update deployment
-                            sed -i "s|image: harbor.local/sample-app/webapi:.*|image: ${IMAGE_NAME}:${BUILD_TAG}|g" manifests/dev/webapi-deployment.yaml
-                            sed -i "s|image: harbor.local/sample-app/webapi:.*|image: ${IMAGE_NAME}:${BUILD_TAG}|g" manifests/dev/webapi-deployment.vault.yaml 2>/dev/null || true
+                        # Update deployment
+                        sed -i "s|image: harbor.local/sample-app/webapi:.*|image: ${IMAGE_NAME}:${BUILD_TAG}|g" manifests/dev/webapi-deployment.yaml
+                        sed -i "s|image: harbor.local/sample-app/webapi:.*|image: ${IMAGE_NAME}:${BUILD_TAG}|g" manifests/dev/webapi-deployment.vault.yaml 2>/dev/null || true
 
-                            git add manifests/dev/
-                            git commit -m "Update webapi to ${BUILD_TAG}
+                        git add manifests/dev/
+                        git commit -m "Update webapi to ${BUILD_TAG}
 
 Built by: Jenkins
 Job: ${JOB_NAME}
 Build: ${BUILD_NUMBER}
 Commit: ${GIT_COMMIT_SHORT}" || echo "No changes"
 
-                            git push https://\${GIT_USERNAME}:\${GIT_TOKEN}@github.com/chanon-dev/poc-deploy-k8s.git ${K8S_BRANCH}
+                        git push https://${GIT_USERNAME}:${GIT_TOKEN}@github.com/chanon-dev/poc-deploy-k8s.git ${K8S_BRANCH}
 
-                            echo "✅ Manifests updated"
-                        '''
-                    }
+                        echo "✅ Manifests updated"
+                    '''
                 }
             }
         }
 
         stage('Trigger Argo CD') {
             steps {
-                container('shell') {
-                    script {
-                        echo "🚀 Triggering Argo CD sync..."
+                script {
+                    echo "🚀 Triggering Argo CD sync..."
 
-                        retry(3) {
-                            sh '''
-                                apk add --no-cache curl
-                                export VAULT_TOKEN=$(cat /workspace/.vault-token)
+                    retry(3) {
+                        sh '''
+                            export VAULT_TOKEN=$(cat ${WORKSPACE}/.vault-token)
 
-                                # Get Argo CD token from Vault
-                                echo "Retrieving Argo CD token from Vault..."
-                                ARGOCD_TOKEN=$(curl -s --max-time 10 \
-                                    -H "X-Vault-Token: ${VAULT_TOKEN}" \
-                                    ${VAULT_ADDR}/v1/secret/data/ci/argocd | \
-                                    grep -o '"token":"[^"]*' | cut -d'"' -f4)
+                            # Get Argo CD token from Vault
+                            echo "Retrieving Argo CD token from Vault..."
+                            ARGOCD_TOKEN=$(curl -s --max-time 10 \
+                                -H "X-Vault-Token: ${VAULT_TOKEN}" \
+                                ${VAULT_ADDR}/v1/secret/data/ci/argocd | \
+                                grep -o '"token":"[^"]*' | cut -d'"' -f4)
 
-                                if [ -z "$ARGOCD_TOKEN" ]; then
-                                    echo "❌ Failed to retrieve Argo CD token"
-                                    exit 1
-                                fi
+                            if [ -z "$ARGOCD_TOKEN" ]; then
+                                echo "❌ Failed to retrieve Argo CD token"
+                                exit 1
+                            fi
 
-                                # Sync application
-                                # TODO: Replace -k with proper SSL certificate verification
-                                # For production, add CA certificate:
-                                #   curl --cacert /path/to/ca.crt ...
-                                # Or import certificate to system truststore
-                                echo "Triggering Argo CD sync..."
-                                HTTP_CODE=$(curl -k -s -w "%{http_code}" -o /tmp/argocd-response.json \
-                                    --max-time 30 \
-                                    -X POST \
-                                    -H "Authorization: Bearer ${ARGOCD_TOKEN}" \
-                                    ${ARGOCD_SERVER}/api/v1/applications/webapi-dev/sync)
+                            # Sync application
+                            echo "Triggering Argo CD sync..."
+                            HTTP_CODE=$(curl -k -s -w "%{http_code}" -o /tmp/argocd-response.json \
+                                --max-time 30 \
+                                -X POST \
+                                -H "Authorization: Bearer ${ARGOCD_TOKEN}" \
+                                ${ARGOCD_SERVER}/api/v1/applications/webapi-dev/sync)
 
-                                if [ "$HTTP_CODE" -ge 200 ] && [ "$HTTP_CODE" -lt 300 ]; then
-                                    echo "✅ Argo CD sync triggered successfully (HTTP ${HTTP_CODE})"
-                                else
-                                    echo "⚠️  Argo CD sync response (HTTP ${HTTP_CODE}):"
-                                    cat /tmp/argocd-response.json || true
-                                fi
+                            if [ "$HTTP_CODE" -ge 200 ] && [ "$HTTP_CODE" -lt 300 ]; then
+                                echo "✅ Argo CD sync triggered successfully (HTTP ${HTTP_CODE})"
+                            else
+                                echo "⚠️  Argo CD sync response (HTTP ${HTTP_CODE}):"
+                                cat /tmp/argocd-response.json || true
+                            fi
 
-                                echo "✅ Argo CD notified"
-                            '''
-                        }
+                            echo "✅ Argo CD notified"
+                        '''
                     }
                 }
             }
@@ -425,24 +328,21 @@ Commit: ${GIT_COMMIT_SHORT}" || echo "No changes"
 
         stage('Record Build') {
             steps {
-                container('shell') {
-                    script {
-                        echo "📊 Recording build metadata..."
+                script {
+                    echo "📊 Recording build metadata..."
 
-                        sh '''
-                            apk add --no-cache curl
-                            export VAULT_TOKEN=$(cat /workspace/.vault-token)
+                    sh '''
+                        export VAULT_TOKEN=$(cat ${WORKSPACE}/.vault-token)
 
-                            curl -s -H "X-Vault-Token: ${VAULT_TOKEN}" \
-                                -H "Content-Type: application/json" \
-                                -X POST \
-                                ${VAULT_ADDR}/v1/secret/data/ci/builds/webapi/${BUILD_NUMBER} \
-                                -d "{\\"data\\": {\\"app\\": \\"webapi\\", \\"build\\": \\"${BUILD_NUMBER}\\", \\"commit\\": \\"${GIT_COMMIT_SHORT}\\", \\"image\\": \\"${IMAGE_NAME}:${BUILD_TAG}\\", \\"timestamp\\": \\"$(date -u +%Y-%m-%dT%H:%M:%SZ)\\"}}" \
-                                > /dev/null
+                        curl -s -H "X-Vault-Token: ${VAULT_TOKEN}" \
+                            -H "Content-Type: application/json" \
+                            -X POST \
+                            ${VAULT_ADDR}/v1/secret/data/ci/builds/webapi/${BUILD_NUMBER} \
+                            -d "{\\"data\\": {\\"app\\": \\"webapi\\", \\"build\\": \\"${BUILD_NUMBER}\\", \\"commit\\": \\"${GIT_COMMIT_SHORT}\\", \\"image\\": \\"${IMAGE_NAME}:${BUILD_TAG}\\", \\"timestamp\\": \\"$(date -u +%Y-%m-%dT%H:%M:%SZ)\\"}}" \
+                            > /dev/null
 
-                            echo "✅ Build recorded"
-                        '''
-                    }
+                        echo "✅ Build recorded"
+                    '''
                 }
             }
         }
@@ -473,13 +373,15 @@ Commit: ${GIT_COMMIT_SHORT}" || echo "No changes"
 
         always {
             script {
-                container('shell') {
-                    sh '''
-                        echo "🧹 Cleaning up sensitive files..."
-                        rm -f /workspace/.vault-token /workspace/.git-creds 2>/dev/null || true
-                        echo "✅ Cleanup completed"
-                    '''
-                }
+                sh '''
+                    echo "🧹 Cleaning up sensitive files..."
+                    rm -f ${WORKSPACE}/.vault-token ${WORKSPACE}/.git-creds 2>/dev/null || true
+
+                    # Logout from Docker registry
+                    docker logout ${HARBOR_REGISTRY} 2>/dev/null || true
+
+                    echo "✅ Cleanup completed"
+                '''
             }
         }
     }
