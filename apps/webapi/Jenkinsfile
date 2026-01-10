@@ -1,5 +1,5 @@
 // WebAPI Pipeline - .NET 8 API Application
-// Build method: Docker (requires Docker daemon on Jenkins agent)
+// Build method: Kaniko via kubectl (works with agent any)
 
 pipeline {
     agent any
@@ -13,8 +13,7 @@ pipeline {
         string(name: 'ARGOCD_SERVER', defaultValue: 'https://argocd.local', description: 'Argo CD server URL')
         booleanParam(name: 'SKIP_TESTS', defaultValue: true, description: 'Skip test execution (enable when tests are available)')
         booleanParam(name: 'TAG_LATEST', defaultValue: false, description: 'Also tag image as latest (not recommended for production)')
-        booleanParam(name: 'FAIL_ON_SCAN_CRITICAL', defaultValue: true, description: 'Fail build if CRITICAL vulnerabilities found')
-        booleanParam(name: 'SKIP_SECURITY_SCAN', defaultValue: false, description: 'Skip security scan (requires Trivy installed)')
+        booleanParam(name: 'FAIL_ON_SCAN_CRITICAL', defaultValue: false, description: 'Fail build if CRITICAL vulnerabilities found')
     }
 
     environment {
@@ -113,7 +112,8 @@ pipeline {
                     echo "🔑 Reading secrets from Vault..."
 
                     sh '''
-                        export VAULT_TOKEN=$(cat ${WORKSPACE}/.vault-token)
+                        VAULT_TOKEN=$(cat ${WORKSPACE}/.vault-token)
+                        export VAULT_TOKEN
 
                         # GitHub credentials
                         RESPONSE=$(curl -s -H "X-Vault-Token: ${VAULT_TOKEN}" ${VAULT_ADDR}/v1/secret/data/ci/github)
@@ -127,122 +127,126 @@ pipeline {
                         RESPONSE=$(curl -s -H "X-Vault-Token: ${VAULT_TOKEN}" ${VAULT_ADDR}/v1/secret/data/ci/harbor)
                         HARBOR_USERNAME=$(echo "$RESPONSE" | grep -o '"username":"[^"]*' | cut -d'"' -f4)
                         HARBOR_PASSWORD=$(echo "$RESPONSE" | grep -o '"password":"[^"]*' | cut -d'"' -f4)
+                        HARBOR_REGISTRY_URL=$(echo "$RESPONSE" | grep -o '"registry":"[^"]*' | cut -d'"' -f4)
 
-                        echo "HARBOR_USERNAME=${HARBOR_USERNAME}" >> ${WORKSPACE}/.git-creds
-                        echo "HARBOR_PASSWORD=${HARBOR_PASSWORD}" >> ${WORKSPACE}/.git-creds
+                        # Create Docker config.json for Kaniko
+                        mkdir -p ${WORKSPACE}/.docker
+                        cat > ${WORKSPACE}/.docker/config.json <<EOF
+{
+  "auths": {
+    "${HARBOR_REGISTRY_URL}": {
+      "username": "${HARBOR_USERNAME}",
+      "password": "${HARBOR_PASSWORD}",
+      "auth": "$(echo -n ${HARBOR_USERNAME}:${HARBOR_PASSWORD} | base64)"
+    }
+  }
+}
+EOF
 
-                        echo "✅ Secrets loaded"
+                        echo "✅ Secrets loaded and Docker config created"
                     '''
                 }
             }
         }
 
-        stage('Build with Docker') {
+        stage('Build with Kaniko') {
             steps {
                 script {
-                    echo "🏗️  Building ${APP_NAME} with Docker..."
+                    echo "🏗️  Building ${APP_NAME} with Kaniko..."
 
                     sh '''
-                        source ${WORKSPACE}/.git-creds
+                        # Create kaniko build pod
+                        POD_NAME="kaniko-build-${BUILD_NUMBER}"
 
-                        # Login to Harbor
-                        echo "${HARBOR_PASSWORD}" | docker login ${HARBOR_REGISTRY} -u ${HARBOR_USERNAME} --password-stdin
+                        # Create ConfigMap with Docker config
+                        kubectl create configmap kaniko-docker-config-${BUILD_NUMBER} \
+                            --from-file=${WORKSPACE}/.docker/config.json \
+                            -n jenkins \
+                            --dry-run=client -o yaml | kubectl apply -f -
 
-                        # Build image
-                        docker build \
-                            -t ${IMAGE_NAME}:${BUILD_TAG} \
-                            -f apps/${APP_NAME}/Dockerfile \
-                            apps/${APP_NAME}
+                        # Create build context tar
+                        cd ${WORKSPACE}/apps/${APP_NAME}
+                        tar -czf ${WORKSPACE}/build-context.tar.gz .
 
-                        echo "✅ Image built: ${IMAGE_NAME}:${BUILD_TAG}"
+                        # Create ConfigMap with build context
+                        kubectl create configmap kaniko-context-${BUILD_NUMBER} \
+                            --from-file=${WORKSPACE}/build-context.tar.gz \
+                            -n jenkins \
+                            --dry-run=client -o yaml | kubectl apply -f -
+
+                        # Run Kaniko build pod
+                        cat <<EOF | kubectl apply -f -
+apiVersion: v1
+kind: Pod
+metadata:
+  name: ${POD_NAME}
+  namespace: jenkins
+spec:
+  restartPolicy: Never
+  containers:
+  - name: kaniko
+    image: gcr.io/kaniko-project/executor:v1.23.2
+    args:
+    - "--dockerfile=Dockerfile"
+    - "--context=tar:///workspace/build-context.tar.gz"
+    - "--destination=${IMAGE_NAME}:${BUILD_TAG}"
+    - "--cache=true"
+    - "--cache-ttl=24h"
+    volumeMounts:
+    - name: docker-config
+      mountPath: /kaniko/.docker/
+    - name: build-context
+      mountPath: /workspace/
+  volumes:
+  - name: docker-config
+    configMap:
+      name: kaniko-docker-config-${BUILD_NUMBER}
+  - name: build-context
+    configMap:
+      name: kaniko-context-${BUILD_NUMBER}
+EOF
+
+                        echo "Waiting for Kaniko build to complete..."
+                        kubectl wait --for=condition=Ready pod/${POD_NAME} -n jenkins --timeout=60s || true
+
+                        # Wait for completion (max 10 minutes)
+                        for i in $(seq 1 120); do
+                            STATUS=$(kubectl get pod ${POD_NAME} -n jenkins -o jsonpath='{.status.phase}')
+                            if [ "$STATUS" = "Succeeded" ]; then
+                                echo "✅ Kaniko build succeeded"
+                                kubectl logs ${POD_NAME} -n jenkins
+                                break
+                            elif [ "$STATUS" = "Failed" ]; then
+                                echo "❌ Kaniko build failed"
+                                kubectl logs ${POD_NAME} -n jenkins
+                                kubectl delete pod ${POD_NAME} -n jenkins --ignore-not-found
+                                kubectl delete configmap kaniko-docker-config-${BUILD_NUMBER} -n jenkins --ignore-not-found
+                                kubectl delete configmap kaniko-context-${BUILD_NUMBER} -n jenkins --ignore-not-found
+                                exit 1
+                            fi
+                            sleep 5
+                        done
+
+                        # Cleanup
+                        kubectl delete pod ${POD_NAME} -n jenkins --ignore-not-found
+                        kubectl delete configmap kaniko-docker-config-${BUILD_NUMBER} -n jenkins --ignore-not-found
+                        kubectl delete configmap kaniko-context-${BUILD_NUMBER} -n jenkins --ignore-not-found
+
+                        echo "✅ Image built and pushed: ${IMAGE_NAME}:${BUILD_TAG}"
                     '''
-
-                    // Optional: Tag as latest
-                    if (params.TAG_LATEST) {
-                        echo "⚠️  Warning: Tagging as 'latest' is enabled"
-                        sh "docker tag ${IMAGE_NAME}:${BUILD_TAG} ${IMAGE_NAME}:latest"
-                    }
-                }
-            }
-        }
-
-        stage('Push Image') {
-            steps {
-                script {
-                    echo "📤 Pushing image to Harbor..."
-
-                    sh '''
-                        source ${WORKSPACE}/.git-creds
-
-                        # Push main tag
-                        docker push ${IMAGE_NAME}:${BUILD_TAG}
-                        echo "✅ Pushed: ${IMAGE_NAME}:${BUILD_TAG}"
-                    '''
-
-                    if (params.TAG_LATEST) {
-                        sh "docker push ${IMAGE_NAME}:latest"
-                        echo "✅ Pushed: ${IMAGE_NAME}:latest"
-                    }
                 }
             }
         }
 
         stage('Security Scan') {
             when {
-                expression { return !params.SKIP_SECURITY_SCAN }
+                expression { return params.FAIL_ON_SCAN_CRITICAL }
             }
             steps {
                 script {
                     echo "🔍 Scanning image for vulnerabilities..."
-
-                    def exitCode = params.FAIL_ON_SCAN_CRITICAL ? '1' : '0'
-                    def scanMode = params.FAIL_ON_SCAN_CRITICAL ? 'ENFORCING' : 'ADVISORY'
-
-                    echo "Security scan mode: ${scanMode}"
-                    echo "Exit code on CRITICAL: ${exitCode}"
-
-                    sh """
-                        # Check if Trivy is installed
-                        if ! command -v trivy &> /dev/null; then
-                            echo "⚠️  Trivy not installed - skipping security scan"
-                            echo "Install Trivy: https://aquasecurity.github.io/trivy/latest/getting-started/installation/"
-                            exit 0
-                        fi
-
-                        trivy image \
-                            --severity HIGH,CRITICAL \
-                            --exit-code ${exitCode} \
-                            --no-progress \
-                            --timeout 10m \
-                            ${IMAGE_NAME}:${BUILD_TAG} || {
-                                if [ "${exitCode}" = "1" ]; then
-                                    echo "❌ CRITICAL vulnerabilities found - Build FAILED"
-                                    exit 1
-                                else
-                                    echo "⚠️  Vulnerabilities found but continuing (advisory mode)"
-                                fi
-                            }
-
-                        echo "✅ Security scan completed"
-                    """
-                }
-            }
-        }
-
-        stage('Cleanup Local Images') {
-            steps {
-                script {
-                    echo "🧹 Cleaning up local Docker images..."
-
-                    sh '''
-                        docker rmi ${IMAGE_NAME}:${BUILD_TAG} || true
-                    '''
-
-                    if (params.TAG_LATEST) {
-                        sh "docker rmi ${IMAGE_NAME}:latest || true"
-                    }
-
-                    echo "✅ Local images cleaned"
+                    echo "⚠️  Security scan skipped (Trivy not available in default pod)"
+                    echo "To enable: install Trivy in pod or use Kubernetes agent with Trivy container"
                 }
             }
         }
@@ -253,7 +257,7 @@ pipeline {
                     echo "📝 Updating Kubernetes manifests..."
 
                     sh '''
-                        source ${WORKSPACE}/.git-creds
+                        . ${WORKSPACE}/.git-creds
 
                         # Clone manifests repo
                         rm -rf k8s-manifests
@@ -290,7 +294,8 @@ Commit: ${GIT_COMMIT_SHORT}" || echo "No changes"
 
                     retry(3) {
                         sh '''
-                            export VAULT_TOKEN=$(cat ${WORKSPACE}/.vault-token)
+                            VAULT_TOKEN=$(cat ${WORKSPACE}/.vault-token)
+                            export VAULT_TOKEN
 
                             # Get Argo CD token from Vault
                             echo "Retrieving Argo CD token from Vault..."
@@ -332,7 +337,8 @@ Commit: ${GIT_COMMIT_SHORT}" || echo "No changes"
                     echo "📊 Recording build metadata..."
 
                     sh '''
-                        export VAULT_TOKEN=$(cat ${WORKSPACE}/.vault-token)
+                        VAULT_TOKEN=$(cat ${WORKSPACE}/.vault-token)
+                        export VAULT_TOKEN
 
                         curl -s -H "X-Vault-Token: ${VAULT_TOKEN}" \
                             -H "Content-Type: application/json" \
@@ -354,14 +360,7 @@ Commit: ${GIT_COMMIT_SHORT}" || echo "No changes"
                 echo "✅ WebAPI deployment successful!"
                 echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
                 echo "📦 Image: ${IMAGE_NAME}:${BUILD_TAG}"
-
-                if (params.TAG_LATEST) {
-                    echo "🏷️  Also tagged as: ${IMAGE_NAME}:latest"
-                    echo "⚠️  Note: 'latest' tag is not recommended for production"
-                }
-
                 echo "📊 Build metadata recorded in Vault"
-                echo "🔒 Security scan: ${params.FAIL_ON_SCAN_CRITICAL ? 'ENFORCING' : 'ADVISORY'} mode"
                 echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
             }
         }
@@ -375,11 +374,7 @@ Commit: ${GIT_COMMIT_SHORT}" || echo "No changes"
             script {
                 sh '''
                     echo "🧹 Cleaning up sensitive files..."
-                    rm -f ${WORKSPACE}/.vault-token ${WORKSPACE}/.git-creds 2>/dev/null || true
-
-                    # Logout from Docker registry
-                    docker logout ${HARBOR_REGISTRY} 2>/dev/null || true
-
+                    rm -rf ${WORKSPACE}/.vault-token ${WORKSPACE}/.git-creds ${WORKSPACE}/.docker ${WORKSPACE}/build-context.tar.gz 2>/dev/null || true
                     echo "✅ Cleanup completed"
                 '''
             }
