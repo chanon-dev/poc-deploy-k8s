@@ -85,6 +85,9 @@ spec:
       limits:
         memory: "256Mi"
         cpu: "200m"
+    volumeMounts:
+    - name: shell-tmp
+      mountPath: /tmp
 
   - name: trivy
     image: aquasec/trivy:0.55.2
@@ -111,6 +114,8 @@ spec:
       items:
       - key: .dockerconfigjson
         path: config.json
+  - name: shell-tmp
+    emptyDir: {}
 '''
         }
     }
